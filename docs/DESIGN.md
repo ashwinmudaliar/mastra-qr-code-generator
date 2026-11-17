@@ -24,19 +24,21 @@ Fonts load from the official Mastra host, with local system fallbacks if unavail
 
 ## Task structure
 
+Keep three primary navigation destinations: Create a QR code, Your QR codes, and Scan analytics. Style presets belong inside the editor's Design tab, not in a separate destination.
+
 - **Create:** destination and a recognizable name first; optional event/book/placement labels afterward.
-- **Design:** presets as a starting point, then logo, colors, shapes, and frame. Every control must change the actual exported image.
-- **Tracking:** explain what is recorded; keep UTM details and expiry subordinate to the main creation task.
+- **Design:** keep presets, logo selection/upload, and Code color visible. Put logo size, background/corner colors, gradients, shapes, and caption-frame controls inside an advanced section that starts collapsed. Expanding or collapsing it must preserve all selected values. Every control must change the actual exported image.
+- **Tracking:** explain what is recorded; keep raw UTM fields inside an advanced campaign section that starts collapsed. Derive campaign/content defaults from event and placement. Expanding or collapsing settings must not change their values or disable tracking. Keep expiry subordinate to the main creation task.
 - **Library:** make edit, duplicate, pause, download, and the tracking link easy to find. Status must reflect expiry as well as active/paused state.
 - **Analytics:** show real visits and real empty states. Make period and code selection explicit. Never invent sample numbers to fill a chart.
 
-On narrow screens, keep editing and preview/save directly accessible through the Edit / Preview & save switch. Preserve the current draft when switching panes.
+On narrow screens, keep editing and preview directly accessible through the Edit / Preview pane switch. Preserve the current draft when switching panes, and make the same save/download state visible on desktop and mobile.
 
-Keep one clear primary action in each panel. Avoid ornamental stat cards, repeated feature claims, decorative hero sections, and marketing copy inside the workflow. A heading such as “Create a QR code” is more useful than a slogan. Descriptions should explain a decision or consequence; remove text that merely restates the heading.
+Keep one clear primary action in each panel. The editor's primary action is Save for a new or changed code and Download PNG for an unchanged saved code; SVG and PDF remain secondary formats. Avoid ornamental stat cards, repeated feature claims, decorative hero sections, and marketing copy inside the workflow. A heading such as “Create a QR code” is more useful than a slogan. Descriptions should explain a decision or consequence; remove text that merely restates the heading.
 
 ## State and wording
 
-An unsaved preview encodes the destination directly. A saved/exported dynamic code encodes its permanent tracking link. Label this distinction visibly so a preview cannot be mistaken for a tracked code. Saving and exporting are separate actions. Export only the saved state; disable exports while there are unsaved edits. Save failures must leave the input intact. Warn before navigating away from unsaved work.
+An unsaved preview encodes the destination directly. A saved/exported dynamic code encodes its permanent tracking link. Label this distinction visibly so a preview cannot be mistaken for a tracked code. Saving and exporting are separate actions. After a successful save, replace the primary Save action with Download PNG. Any further edit restores Save changes as primary; reverting every edit to the saved values restores Download PNG. Export only the saved state, block all formats while there are unsaved edits, and never perform a save as a side effect of downloading. Save failures must leave the input intact. Warn before navigating away from unsaved work.
 
 Use “scan” as a convenient label, with the meaning “tracking-link visit” available where reports are interpreted. Do not claim precise location, unique people, guaranteed scannability, or confirmed orders. “High error correction” describes a setting; “print-ready” must not replace a real scan test.
 

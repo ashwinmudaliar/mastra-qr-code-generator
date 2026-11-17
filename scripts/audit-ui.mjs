@@ -9,6 +9,7 @@ await fs.mkdir(out,{recursive:true});
 const browser=await chromium.launch({headless:true});
 const page=await browser.newPage({viewport:{width:1440,height:1050}});
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const writes=[];page.on('request',r=>{if(r.url().includes('/api/codes')&&['POST','PATCH'].includes(r.method()))writes.push(r.url());});
 let code;
 const shot=async(name)=>{
  const dismiss=page.getByRole('button',{name:'Dismiss notification',exact:true});
@@ -21,30 +22,62 @@ const shot=async(name)=>{
 try{
  await page.goto(base,{waitUntil:'networkidle'});
  await page.locator('.qr-stage img').waitFor();
+ assert.equal(await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button').count(),3,'Three primary navigation destinations');
+ assert.equal(await page.getByRole('button',{name:'Style presets',exact:true}).count(),0,'Presets live only in Design');
  await page.getByLabel('QR code name').fill('UI audit — temporary');
  await page.getByLabel('Event or campaign').fill('Audit 2027');
  await page.getByLabel('Placement',{exact:false}).fill('Book table');
  await shot('create-desktop');
  await page.getByRole('tab',{name:/Design/}).click();
  await page.locator('.qr-stage img').waitFor();
+ assert.equal(await page.getByLabel('Corner frame').isVisible(),false,'Advanced styling starts collapsed');
+ const previousPreview=await page.locator('.qr-stage img').getAttribute('src');
+ await page.getByRole('button',{name:'After hours',exact:true}).click();
+ await page.waitForFunction(previous=>document.querySelector('.qr-stage img')?.getAttribute('src')!==previous,previousPreview);
+ const advanced=page.getByText('Advanced design',{exact:true});
+ await advanced.focus();await advanced.press('Enter');
+ assert.equal(await page.getByLabel('Color style').inputValue(),'linear','Preset applies its actual design');
+ assert.equal(await page.getByLabel('Print frame').inputValue(),'bottom');
+ await page.getByLabel('Frame caption',{exact:true}).fill('Audit book pickup');
+ await advanced.click();await advanced.click();
+ assert.equal(await page.getByLabel('Frame caption',{exact:true}).inputValue(),'Audit book pickup','Collapsing advanced controls preserves edits');
+ await shot('design-advanced-desktop');
+ await advanced.click();
  await shot('design-desktop');
  await page.getByRole('tab',{name:/Tracking/}).click();
+ assert.equal(await page.getByLabel('Source',{exact:true}).isVisible(),false,'Campaign fields start collapsed');
+ const campaign=page.getByText('Customize campaign tags',{exact:true});
+ await campaign.focus();await campaign.press('Space');
+ await page.getByLabel('Campaign',{exact:true}).fill('audit-tags');
+ await campaign.click();await campaign.click();
+ assert.equal(await page.getByLabel('Campaign',{exact:true}).inputValue(),'audit-tags','Collapsing campaign tags preserves edits');
+ await campaign.click();
  await shot('tracking-desktop');
  await page.getByRole('tab',{name:/Content/}).click();
  const saved=page.waitForResponse(r=>r.url().endsWith('/api/codes')&&r.request().method()==='POST');
  await page.locator('.preview-panel > button.primary').click();
  const response=await saved;assert.equal(response.status(),201,await response.text());code=(await response.json()).code;
  await page.getByLabel('Tracking link',{exact:true}).waitFor();
+ assert.equal(code.design.caption,'Audit book pickup');assert.equal(code.utm.campaign,'audit-tags');
+ assert.equal(await page.locator('.preview-panel > button.primary').innerText(),'Download PNG','Saving promotes Download');
+ await shot('saved-desktop');
+ const writesBeforeExport=writes.length;
  for(const format of ['PNG','SVG','PDF']){
-  const promise=page.waitForEvent('download');await page.getByRole('button',{name:format,exact:true}).click();
+  const promise=page.waitForEvent('download');await page.getByRole('button',{name:format==='PNG'?'Download PNG':format,exact:true}).click();
   const file=await promise;const path=out+'export.'+format.toLowerCase();await file.saveAs(path);const bytes=await fs.readFile(path);
   if(format==='PNG'){const {data,info}=await sharp(bytes).ensureAlpha().raw().toBuffer({resolveWithObject:true});const decoded=jsQR(new Uint8ClampedArray(data),info.width,info.height);assert.equal(decoded?.data,base+'/q/'+code.slug);}
   if(format==='SVG')assert.ok(bytes.toString().includes('<svg'));
   if(format==='PDF')assert.equal(bytes.toString().slice(0,4),'%PDF');
  }
+ assert.equal(writes.length,writesBeforeExport,'Downloads must not write saved data');
  await page.getByLabel('Destination URL').fill('https://www.mastrabooks.dev/?draft=1');
- assert.equal(await page.getByRole('button',{name:'PNG',exact:true}).isDisabled(),true,'Unsaved edits must not silently save on export');
+ assert.equal(await page.locator('.preview-panel > button.primary').innerText(),'Save changes','Edits restore Save as primary');
+ assert.equal(await page.getByRole('button',{name:'Download PNG',exact:true}).count(),0);
+ for(const format of ['SVG','PDF'])assert.equal(await page.getByRole('button',{name:format,exact:true}).isDisabled(),true,'Unsaved edits must block export');
  await page.getByLabel('Destination URL').fill(code.destination);
+ assert.equal(await page.locator('.preview-panel > button.primary').innerText(),'Download PNG','Reverting to saved input restores Download');
+ await page.setViewportSize({width:1024,height:900});await shot('saved-laptop');
+ await page.setViewportSize({width:1440,height:1050});
  await page.getByRole('button',{name:/Your QR codes/,exact:false}).click();
  await page.getByText('UI audit — temporary',{exact:true}).waitFor();
  await shot('library-desktop');
@@ -68,15 +101,15 @@ try{
  await shot('create-mobile');
  await page.getByRole('tab',{name:/Design/}).click();
  await shot('design-mobile');
- await page.getByRole('button',{name:'Preview & save',exact:true}).click();
+ await page.getByRole('button',{name:'Preview',exact:true}).click();
  assert.equal(await page.locator('.preview-column').isVisible(),true,'Mobile preview pane must be visible');
  assert.equal(await page.locator('.editor-panel').isVisible(),false,'Mobile edit pane must be hidden in preview mode');
  await page.getByRole('button',{name:'Edit',exact:true}).click();
  await page.getByRole('tab',{name:'Content',exact:true}).click();
  await page.getByLabel('QR code name').fill('UI audit — mobile saved');
- await page.getByRole('button',{name:'Preview & save',exact:true}).click();
+ await page.getByRole('button',{name:'Preview',exact:true}).click();
  await page.getByRole('heading',{name:'UI audit — mobile saved',exact:true}).waitFor();
- assert.equal(await page.getByRole('button',{name:'PNG',exact:true}).isDisabled(),true,'Pane switches must preserve unsaved changes');
+ assert.equal(await page.getByRole('button',{name:'SVG',exact:true}).isDisabled(),true,'Pane switches must preserve unsaved changes');
  const mobileSave=page.locator('.preview-panel > button.primary');
  assert.equal(await mobileSave.isEnabled(),true,'Save must be available in the mobile preview pane');
  await mobileSave.scrollIntoViewIfNeeded();
@@ -86,6 +119,7 @@ try{
  await mobileSave.click();
  assert.equal((await updated).status(),200,'Mobile Save changes must persist the draft');
  await page.getByText('Saved QR code',{exact:true}).waitFor();
+ assert.equal(await page.locator('.preview-panel > button.primary').innerText(),'Download PNG','Mobile Save promotes Download');
  await shot('preview-save-mobile');
  await page.getByRole('button',{name:'Edit',exact:true}).click();
  assert.equal(await page.getByLabel('QR code name').inputValue(),'UI audit — mobile saved','Switching back must retain the saved inputs');
@@ -93,6 +127,6 @@ try{
  assert.equal(await page.locator('.editor-panel').isVisible(),true,'New code resets mobile view to Edit');
  assert.equal(await page.locator('.preview-column').isVisible(),false,'New code hides mobile preview until selected');
  assert.deepEqual(errors,[],'No browser runtime errors');
- console.log('Browser checks passed: save, saved-link export (PNG decoded/SVG/PDF), dirty export prevention, library, event/code filtering, scan report, mobile Edit/Preview switching and saving, desktop/mobile overflow.');
+ console.log('Browser checks passed: integrated presets, collapsed controls with keyboard/value retention, Save/Download transitions, read-only PNG/SVG/PDF export (PNG decoded), dirty export prevention, library, filters, scan report, mobile editing/saving, desktop/laptop/mobile overflow.');
 }catch(e){await page.screenshot({path:out+'failure.png',fullPage:true});throw e;}
 finally{if(code){const r=await fetch(base+'/api/codes/'+code.id,{method:'DELETE'});assert.equal(r.status,200);console.log('Temporary UI test code removed.');}await browser.close();}

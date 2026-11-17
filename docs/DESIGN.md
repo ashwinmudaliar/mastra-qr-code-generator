@@ -36,6 +36,19 @@ On narrow screens, keep editing and preview directly accessible through the Edit
 
 Keep one clear primary action in each panel. The editor's primary action is Save for a new or changed code and Download PNG for an unchanged saved code; SVG and PDF remain secondary formats. Avoid ornamental stat cards, repeated feature claims, decorative hero sections, and marketing copy inside the workflow. A heading such as “Create a QR code” is more useful than a slogan. Descriptions should explain a decision or consequence; remove text that merely restates the heading.
 
+## Mobile readability
+
+At phone widths, make text and controls usable at the displayed scale rather than shrinking the desktop layout:
+
+- Use 16 px text in editable inputs and selectors, 14 px for labels and body/help copy, and 12–13 px only for compact metadata. Action labels can use 13–14 px. Avoid the former 7–11 px operational labels.
+- Keep primary and secondary controls at least 44 px tall, with 44 × 44 px targets for icon actions. Editable fields use at least 48 px height. Give controls space to wrap instead of reducing their text size.
+- Use `#939393` or brighter for muted operational text on the dark surfaces. Review actual foreground/background pairs, including inactive controls, empty states, placeholders, and notes.
+- Show short mobile navigation labels with the full accessible names. At 480 px and below, use two columns for preset and dot choices; keep library status and actions on separate rows and metric cards in one column.
+- Use a readable labelled list for recent scans on mobile while retaining the desktop table. Preserve every record field; do not solve crowding by hiding information.
+- Render chart axis labels as fixed-size text outside the scaling SVG, retaining the exact daily-count table. Labels must remain legible at narrow widths and with large counts.
+
+Apply the same standards to the editor, preview/download controls, tracking, library, analytics, guide, dialogs, and sign-in/sign-up forms. Visual review of auth screens does not complete account setup or verify email delivery.
+
 ## State and wording
 
 An unsaved preview encodes the destination directly. A saved/exported dynamic code encodes its permanent tracking link. Label this distinction visibly so a preview cannot be mistaken for a tracked code. Saving and exporting are separate actions. After a successful save, replace the primary Save action with Download PNG. Any further edit restores Save changes as primary; reverting every edit to the saved values restores Download PNG. Export only the saved state, block all formats while there are unsaved edits, and never perform a save as a side effect of downloading. Save failures must leave the input intact. Warn before navigating away from unsaved work.
@@ -46,7 +59,7 @@ During private review, state that event attendees need preview access. Do not im
 
 ## Review a visual change
 
-Review the running UI at a desktop width, a narrow laptop width, and a phone width. Check the complete flow, not just a polished first screen:
+Review the running UI at a desktop width, a narrow laptop width, and phone widths of 320, 360, 390, and 430 px. Inspect computed text sizes, contrast, and touch targets alongside screenshots; full-page captures alone can conceal microtype. Check the complete flow, not just a polished first screen:
 
 1. New code, invalid input, saved code, and edited destination.
 2. Design controls with a real uploaded logo, gradients, and a long caption.

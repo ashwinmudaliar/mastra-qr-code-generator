@@ -42,7 +42,7 @@ With the local development server running:
 QR_TEST_URL=http://127.0.0.1:3147 node scripts/verify-backend.mjs
 ```
 
-For a browser pass with that server running, install the test browser with `npx playwright install chromium --only-shell` and run `node scripts/audit-ui.mjs`. It checks saved exports and desktop/phone layouts and saves artifacts under ignored `outputs/design-audit/`.
+For a browser pass with that server running, install the test browser with `npx playwright install chromium --only-shell` and run `node scripts/audit-ui.mjs`. It checks saved exports and desktop/phone layouts and saves artifacts under ignored `outputs/design-audit/`. For a focused mobile readability pass, run `node scripts/audit-mobile.mjs`. It captures 320/360/390/430px layouts, checks minimum text/control sizes and page overflow, and saves results under ignored `outputs/mobile-readability/`.
 
 The HTTP and browser checks create and remove their own temporary codes. QR tests decode actual artwork, including logos, gradients, frames, and pattern combinations. `tests/rls.sql` verifies database access boundaries inside a transaction that rolls back its fixtures; run it against the intended Supabase test project after schema changes.
 

@@ -127,6 +127,7 @@ try {
       const navigationLocked = await page.getByRole('button', { name: 'Your QR codes', exact: true }).isDisabled();
       await page.getByRole('button', { name: 'Preview', exact: true }).click();
       await expect(page.locator('.preview-panel > button.primary')).toBeDisabled();
+      await expect(page.locator('.preview-panel > button.primary')).toHaveText('Adding logo…');
       await page.getByRole('button', { name: 'Edit', exact: true }).click();
       await page.evaluate(() => window.__releaseLogo());
       await expect(page.getByAltText('Uploaded logo')).toBeVisible();

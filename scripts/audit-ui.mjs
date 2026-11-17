@@ -93,8 +93,37 @@ try{
  await page.getByLabel('Filter analytics by event',{exact:true}).selectOption('');
  assert.equal(await codeChoices.inputValue(),'','Changing event must reset code selection');
  await page.getByText('Recent scans',{exact:true}).waitFor();
+ const breakdownSelect=page.getByLabel('Break down scans by',{exact:false});
+ assert.equal(await breakdownSelect.isVisible(),false,'Desktop keeps all breakdowns directly visible');
+ for(const title of ['Top countries','Top cities','Devices'])assert.equal(await page.getByRole('heading',{name:title,exact:true}).isVisible(),true);
  await shot('analytics-desktop');
  await page.setViewportSize({width:390,height:844});
+ await page.getByLabel('Filter analytics by event',{exact:true}).selectOption('Audit 2027');
+ await codeChoices.selectOption(code.id);
+ const filteredReport=page.waitForResponse(r=>r.url().includes('/api/analytics?days=7')&&r.url().includes('codeId='+code.id));
+ await page.getByLabel('Analytics period',{exact:true}).selectOption('7');
+ const report=await (await filteredReport).json();
+ await page.getByText('Recent scans',{exact:true}).waitFor();
+ assert.equal(await breakdownSelect.isVisible(),true,'Mobile exposes the breakdown selector');
+ for(const [value,title,key] of [['country','Top countries','byCountry'],['city','Top cities','byCity'],['device','Devices','byDevice']]){
+  await breakdownSelect.selectOption(value);
+  assert.equal(await page.locator('#scan-breakdowns > div:visible').count(),1,'Only one mobile breakdown is visible');
+  assert.equal(await page.getByRole('heading',{name:title,exact:true}).isVisible(),true);
+  for(const primary of ['Scans over time','Scans by event','Scans by book','Scans by code'])assert.equal(await page.getByRole('heading',{name:primary,exact:true}).isVisible(),true,'Primary comparisons stay visible');
+  const rows=page.locator('#scan-breakdowns > div:visible .bar-row');
+  assert.deepEqual(await rows.locator('strong').allTextContents(),report[key].slice(0,6).map(row=>row.scans.toLocaleString()),'Selected breakdown shows its real counts');
+  assert.equal(await page.getByLabel('Analytics period',{exact:true}).inputValue(),'7');
+  assert.equal(await page.getByLabel('Filter analytics by event',{exact:true}).inputValue(),'Audit 2027');
+  assert.equal(await codeChoices.inputValue(),code.id,'Breakdown switching preserves report filters');
+ }
+ await shot('analytics-mobile-device');
+ await page.setViewportSize({width:1024,height:900});
+ assert.equal(await breakdownSelect.isVisible(),false);
+ for(const title of ['Top countries','Top cities','Devices'])assert.equal(await page.getByRole('heading',{name:title,exact:true}).isVisible(),true,'Desktop restores every breakdown after mobile selection');
+ await shot('analytics-laptop');
+ await page.setViewportSize({width:390,height:844});
+ assert.equal(await breakdownSelect.inputValue(),'device','Resizing preserves the mobile selection');
+ await breakdownSelect.selectOption('country');
  await shot('analytics-mobile');
  await page.getByRole('button',{name:/Create a QR code/,exact:false}).click();
  await page.getByRole('tab',{name:/Content/}).click();
@@ -127,6 +156,6 @@ try{
  assert.equal(await page.locator('.editor-panel').isVisible(),true,'New code resets mobile view to Edit');
  assert.equal(await page.locator('.preview-column').isVisible(),false,'New code hides mobile preview until selected');
  assert.deepEqual(errors,[],'No browser runtime errors');
- console.log('Browser checks passed: integrated presets, collapsed controls with keyboard/value retention, Save/Download transitions, read-only PNG/SVG/PDF export (PNG decoded), dirty export prevention, library, filters, scan report, mobile editing/saving, desktop/laptop/mobile overflow.');
+ console.log('Browser checks passed: integrated presets, collapsed controls with keyboard/value retention, Save/Download transitions, read-only PNG/SVG/PDF export (PNG decoded), dirty export prevention, library, filters, mobile breakdown selection with actual counts, scan report, mobile editing/saving, desktop/laptop/mobile overflow.');
 }catch(e){await page.screenshot({path:out+'failure.png',fullPage:true});throw e;}
 finally{if(code){const r=await fetch(base+'/api/codes/'+code.id,{method:'DELETE'});assert.equal(r.status,200);console.log('Temporary UI test code removed.');}await browser.close();}

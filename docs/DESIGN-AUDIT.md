@@ -26,22 +26,19 @@ The desktop is ready for private design review. The mobile editor separates edit
 | Medium | Presets duplicated a navigation destination and an editor control. | A simple styling choice appeared to require a separate workflow. | Folded presets into Design; primary navigation now contains Create, Your QR codes, and Scan analytics. |
 | Medium | Advanced artwork and raw campaign controls were always visible. | Occasional settings added clutter and length to routine creation. | Advanced styling and campaign parameters start collapsed; all customization remains available and selected values persist when closed. |
 | Medium | Save remained the strongest action after a successful save. | The next task, downloading, was visually secondary. | An unchanged saved code now offers Download PNG as its primary action, with SVG/PDF secondary. Editing restores Save changes and blocks downloads until saved. |
+| Medium | Country, city, and device reports formed a long stack on phones. | Secondary breakdowns lengthened the mobile report without helping the main comparison. | A Country / City / Device selector shows one breakdown on mobile; desktop retains all three. Scans over time and event, book, and code comparisons stay outside the selector. |
 
 ## Simplification follow-up
 
-Applied the requested follow-up on 2026-11-17: presets now live only in Design, advanced styling and campaign settings start collapsed, and Download PNG becomes primary after saving. These changes preserve the customization options and the explicit save-before-export behavior.
+Applied the requested follow-up on 2026-11-17: presets now live only in Design, advanced styling and campaign settings start collapsed, and Download PNG becomes primary after saving. These changes preserve the customization options and the explicit save-before-export behavior. Mobile analytics now uses a Country / City / Device selector for one secondary breakdown at a time, while the chart and event comparisons remain visible. Book/code comparisons remain available, and desktop continues to show all three secondary breakdowns.
 
-Two recommendations remain:
-
-1. **Reduce the mobile report stack.** Keep visits over time and event comparison visible; use a selector for country, city, and device breakdowns.
-2. **Review secondary text at actual device scale.** Some metadata remains compact. Before a wider rollout, test narrow screens and browser zoom with real users rather than judging only full-page captures.
-
-These remaining items are recommendations, not implemented features.
+One recommendation remains: **review secondary text at actual device scale.** Some metadata remains compact. Before a wider rollout, test narrow screens and browser zoom with real users rather than judging only full-page captures. This wider user review is still pending.
 
 ## Evidence and limits
 
 - Real browser checks cover saving, decoding the downloaded PNG's saved tracking link, SVG/PDF downloads, prevention of exporting unsaved changes, the code library, a recorded visit, reports, and desktop/mobile overflow.
 - The simplification follow-up verifies three primary navigation destinations, keyboard operation and value retention in collapsed settings, Save/Download transitions after edits and reverts, and that downloads make no write requests. Desktop, narrow-laptop, and mobile captures show the collapsed editor and saved Download action without clipping or overlap.
+- Mobile analytics checks switch Country / City / Device against the filtered report counts, preserve period/event/code filters, and verify that resizing restores all three desktop breakdowns. Reviewed phone, laptop, and desktop captures keep Scans over time and event/book/code comparisons outside the selector without overlap or clipping.
 - Representative styles are decoder-tested, including logos, gradients, dot/corner combinations, caption frames, and quiet zones. This does not replace scanning a physical print with target phones under event lighting.
 - Server checks cover persistent tracking slugs, destination changes, UTM handling, pause/resume, invalid URLs, cross-site writes, and scan classification. Hosted row-security checks verify owner isolation and anonymous denial.
 - Screenshots and disposable exports are generated locally under ignored `outputs/design-audit/` by `scripts/audit-ui.mjs`; they are not customer data or committed fixtures. Temporary test codes are removed after checks.

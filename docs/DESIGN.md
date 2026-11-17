@@ -30,7 +30,7 @@ Keep three primary navigation destinations: Create a QR code, Your QR codes, and
 - **Design:** keep presets, logo selection/upload, and Code color visible. Put logo size, background/corner colors, gradients, shapes, and caption-frame controls inside an advanced section that starts collapsed. Expanding or collapsing it must preserve all selected values. Every control must change the actual exported image.
 - **Tracking:** explain what is recorded; keep raw UTM fields inside an advanced campaign section that starts collapsed. Derive campaign/content defaults from event and placement. Expanding or collapsing settings must not change their values or disable tracking. Keep expiry subordinate to the main creation task.
 - **Library:** make edit, duplicate, pause, download, and the tracking link easy to find. Status must reflect expiry as well as active/paused state.
-- **Analytics:** show real visits and real empty states. Make period and code selection explicit. Never invent sample numbers to fill a chart.
+- **Analytics:** keep Scans over time and event comparisons visible. Preserve book and code comparisons as well. On phones, a Country / City / Device selector shows one secondary breakdown at a time; on desktop, show all three breakdowns together. The selector must not hide the chart or campaign comparisons, change their data, or reset the period/event/code filters. Show real visits and real empty states. Never invent sample numbers to fill a chart.
 
 On narrow screens, keep editing and preview directly accessible through the Edit / Preview pane switch. Preserve the current draft when switching panes, and make the same save/download state visible on desktop and mobile.
 
@@ -51,7 +51,7 @@ Review the running UI at a desktop width, a narrow laptop width, and a phone wid
 1. New code, invalid input, saved code, and edited destination.
 2. Design controls with a real uploaded logo, gradients, and a long caption.
 3. Empty and populated library, filters with no matches, pause/expiry, and deletion.
-4. Empty and populated analytics, long names, unknown geography, and export labels.
+4. Empty and populated analytics, long names, unknown geography, and export labels. On phones, switch Country / City / Device while keeping the chart and campaign comparisons available; on desktop, verify all three breakdowns remain visible.
 5. Sign-in, confirmation/error states, loading, and network failure.
 
 Confirm keyboard focus, label association, readable contrast, touch targets, and absence of horizontal overflow. Keep downloads consistent with the preview and decoder-test representative styled exports. Finish with a concise audit: issue, user consequence, severity, and proposed fix. Separate observed defects from future product suggestions.

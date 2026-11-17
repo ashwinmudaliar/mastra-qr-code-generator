@@ -1,0 +1,21 @@
+node_modules/
+.next/
+.vercel/
+.env*
+!.env.example
+.local-data/
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+outputs/
+.DS_Store
+.vercel
+
+.data/
+
+# Proprietary brand fonts are loaded from the official Mastra host.
+/public/fonts/*.woff2
+
+# Supabase CLI local metadata and credentials.
+supabase/.temp/
+supabase/.branches/

@@ -1,0 +1,6 @@
+.env*
+.data/
+outputs/
+.git/
+.agents/
+node_modules/

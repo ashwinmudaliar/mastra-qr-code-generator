@@ -24,7 +24,7 @@ The initial migration is `supabase/migrations/20261117172014_qr_studio_initial.s
 
 ## Deployment
 
-The current stack is Vercel + Supabase; no Sites/Cloudflare hosting scaffold is used. See [Supabase setup](../supabase/SETUP.md) for the environment variables, auth callback settings, and scoped Edge Function deployment.
+The current stack is Vercel + Supabase; no Sites/Cloudflare hosting scaffold is used. Vercel Git integration is not connected during private review; future deployments are manual, protected previews until public launch is explicitly approved. See [Supabase setup](../supabase/SETUP.md) for the environment variables, auth callback settings, and scoped Edge Function deployment.
 
 Publish a Vercel preview for review and preserve Deployment Protection. Verify the deployment’s actual target, status, URL, and unauthenticated behavior before sharing it; do not assume a preview command selected the intended target, especially when a project has no production deployment. Review aliases as well as the deployment itself. Then test account access and the actual scan path using disposable fixtures. Connect Git only when its branch and production settings preserve private review; do not publish main as a side effect of repository setup. Keep the same Supabase project unless a move is explicitly intended.
 

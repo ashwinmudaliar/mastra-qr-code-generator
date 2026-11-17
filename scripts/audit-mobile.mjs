@@ -5,7 +5,8 @@ const base='http://127.0.0.1:3147';
 const dir=new URL('../outputs/mobile-readability/',import.meta.url).pathname;
 await fs.mkdir(dir,{recursive:true});
 const browser=await chromium.launch({headless:true});
-const page=await browser.newPage({viewport:{width:390,height:844}});
+// Measure settled geometry; hover transitions can introduce fractional rect noise.
+const page=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'});
 const errors=[];page.on('pageerror',error=>errors.push(error.message));
 let code;
 const findings=[];
@@ -57,7 +58,7 @@ try{
   await page.getByRole('button',{name:'How tracking works',exact:true}).click();await capture('guide-'+width);
  }
  // Visual review of sign-in and signup only; no account requests are submitted.
- const auth=await browser.newPage({viewport:{width:320,height:844}});
+ const auth=await browser.newPage({viewport:{width:320,height:844},reducedMotion:'reduce'});
  await auth.route('**/api/session',route=>route.fulfill({json:{configured:true,mode:'supabase',user:null}}));
  await auth.goto(base,{waitUntil:'networkidle'});
  for(const width of [320,360,390,430]){

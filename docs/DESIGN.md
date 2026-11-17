@@ -53,6 +53,8 @@ Apply the same standards to the editor, preview/download controls, tracking, lib
 
 An unsaved preview encodes the destination directly. A saved/exported dynamic code encodes its permanent tracking link. Label this distinction visibly so a preview cannot be mistaken for a tracked code. Saving and exporting are separate actions. After a successful save, replace the primary Save action with Download PNG. Any further edit restores Save changes as primary; reverting every edit to the saved values restores Download PNG. Export only the saved state, block all formats while there are unsaved edits, and never perform a save as a side effect of downloading. Save failures must leave the input intact. Warn before navigating away from unsaved work.
 
+While saving or processing a logo, disable edits and draft-changing navigation so completion cannot overwrite newer work. Keep the mobile Edit / Preview switch usable. A library pause/resume action must also update any retained editor state; changing a destination later must not undo the selected status. Analytics provides a Refresh action that preserves period, event, and code filters.
+
 Use “scan” as a convenient label, with the meaning “tracking-link visit” available where reports are interpreted. Do not claim precise location, unique people, guaranteed scannability, or confirmed orders. “High error correction” describes a setting; “print-ready” must not replace a real scan test.
 
 During private review, state that event attendees need preview access. Do not imply that a private deployment is ready for public materials. Never regenerate a slug when editing, and warn before deleting a code whose printed copies will stop working.

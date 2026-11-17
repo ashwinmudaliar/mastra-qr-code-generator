@@ -16,6 +16,12 @@ Run `scripts/verify-backend.mjs` against a loopback development server with `QR_
 
 Run `tests/rls.sql` against the intended Supabase test project after schema/policy changes. It verifies anonymous denial and cross-owner isolation and rolls back fixtures. Follow with Supabase security advisors. Never repurpose a real customer's record as a fixture.
 
+For the complete saved-code workflow, run `node scripts/verify-e2e.mjs` against the loopback reviewer server. It uploads a real PNG made from the existing Mastra asset through the file picker, saves and reloads the code, downloads PNG/SVG/PDF, edits its destination, and verifies the original link, campaign tags, two recorded visits, and desktop/mobile reports. Only its temporary record is deleted. The script refuses to use a hosted account; account configuration and email delivery are outside this check.
+
+Then run `node scripts/verify-export-artifacts.mjs` to independently render and decode the actual files from that run. This requires Poppler's `pdfinfo` and `pdftoppm` on the local machine in addition to the locked Node dependencies. It checks the uploaded logo embedded in the SVG, renders the PDF at 300 dpi, and decodes all three formats to the same expected tracking URL. Inspect `outputs/end-to-end/verification-comparison.png` for logo, frame, caption, and margin consistency. These artifacts are disposable local-review exports, not event-ready materials.
+
+Run `node scripts/verify-editor-state.mjs` after changing editor state or asynchronous actions. Its isolated browser responses exercise delayed saves, upload processing, failed-save recovery, retained pause status, and analytics refresh without creating database fixtures or changing account settings.
+
 ## Schema changes
 
 Use the Supabase project's migration workflow. Inspect existing schema first; create a new migration, do not edit one already applied. Keep owner RLS on both tables and test SELECT/INSERT/UPDATE/DELETE paths. Anonymous access to tables must remain denied; client-side filtering is not authorization. Update contracts and repository conversions with the migration.

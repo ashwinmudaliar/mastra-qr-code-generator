@@ -31,6 +31,8 @@
 
 /* Keep common choices visible; disclose detailed customization on demand. */
 .preset-choices{border:0;padding:0;margin:0;min-width:0}.preset-choices legend{padding:0;margin-bottom:12px;font-size:13px;color:#ccc}
+.editor-fields{border:0;margin:0;min-width:0;width:100%}.editor-fields:disabled :is(input,select,textarea){opacity:1;color:var(--secondary);-webkit-text-fill-color:var(--secondary);cursor:wait}.brand[aria-disabled=true]{cursor:wait}
+.analytics-title{display:flex;align-items:center;flex-wrap:wrap;gap:16px}
 .advanced-settings{border-top:1px solid #292929;border-bottom:1px solid #292929;margin:22px 0 0}.advanced-settings>summary{display:flex;align-items:center;justify-content:space-between;gap:16px;list-style:none;cursor:pointer;min-height:54px;padding:15px 0;color:#ccc;font-size:13px}.advanced-settings>summary::-webkit-details-marker{display:none}.advanced-settings>summary:hover{color:var(--green)}.advanced-settings>summary:focus-visible{outline:2px solid var(--green);outline-offset:4px;border-radius:3px}.advanced-settings[open]>summary svg{transform:rotate(90deg)}.advanced-body{padding:8px 0 5px}.advanced-body>.field-help{font-size:12px;line-height:1.5;color:#939393;margin:0 0 18px}.download-row{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:760px){.sidebar .nav-item{font-size:11px;padding-left:10px;padding-right:10px}.advanced-settings>summary{min-height:56px;font-size:14px}}
 .preview-panel>.btn.primary>svg:only-child{margin:0}

@@ -6,6 +6,8 @@ Built with Next.js, Supabase Postgres, and Vercel. The protected Studio opens wi
 
 Supabase Auth is retained for a later login rollout. No signup, email confirmation, or Auth URL setup is needed for the current private workspace. Anyone with authorized Vercel access or a protection bypass can use that workspace, so keep preview access limited to the intended reviewer.
 
+The [current private Studio](https://mastra-qr-studio-7hcwdybe3-ashwinm546.vercel.app) exports public scan links at `qr.mastrabooks.dev`. The [18 November release record](docs/PUBLIC-LAUNCH.md) lists deployed versions, observed checks, and remaining boundaries. Existing preview exports must be downloaded again to use the public origin.
+
 ## What works
 
 - Dynamic links with editable destinations, pause/resume, optional expiry, and reversible archival that keeps scan and fulfillment history.

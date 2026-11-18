@@ -2,7 +2,7 @@
 
 This directory is a standalone Vercel Node.js project for `https://qr.mastrabooks.dev`. Deploy **from this directory**, linked to the scanner project, never the protected Studio project. It has no runtime dependencies and imports nothing outside this directory. The Studio editor, APIs, account code, and Books preview integration are not included.
 
-The single Web Standard function receives the original request URL through a catch-all rewrite. It accepts only `GET` and `HEAD` at `/q/<12-character slug>`. The handler validates the pathname, never a query parameter or forwarded path header. `/`, `/api/index`, management/auth paths, and malformed slugs return 404. Other methods on a valid scan path return 405. The reserved `/q/draftpreview` explains an unsaved export and returns 404 without contacting storage. An explicit, empty `public/` build output prevents the static file server from publishing source or configuration files.
+An explicit route sends only `/q/<12-character slug>` to the single Web Standard function while preserving the original request URL. The handler accepts only `GET` and `HEAD` and validates the pathname again, never a query parameter or forwarded path header. A terminal route returns 404 for everything else, including `/`, `/api/index`, management/auth paths, and malformed slugs; there is no filesystem fallthrough. Other methods on a valid scan path return 405. The reserved `/q/draftpreview` explains an unsaved export and returns 404 without contacting storage. The explicit `public/` build output contains only a generated 404 page, satisfying Vercel's nonempty-output requirement without publishing source or configuration files.
 
 ## Server environment
 
@@ -20,7 +20,7 @@ Scans are link visits, not unique people. HEAD, known bots, and prefetches resol
 
 ## Verify and release
 
-From this directory run `npm ci --ignore-scripts` and `npm run build`. Repository tests include `tests/public-scanner.test.ts` and run from the repository root with `npm test`. The Vercel build also runs this directory's typecheck and prepares the empty static output.
+From this directory run `npm ci --ignore-scripts` and `npm run build`. Repository tests include `tests/public-scanner.test.ts` and run from the repository root with `npm test`. The Vercel build also runs this directory's typecheck and generates the sole static 404 page. Unexpected files in the static output cause the build to fail rather than becoming public.
 
 Verify the hosted rewrite preserves the original pathname and does not expose `/api/index?slug=...`, source files, or any Studio route. Test GET/HEAD, draft/unknown/archived codes, real saved destinations, one recorded visit, and the absence of management routes without authentication. Test gateway denial independently. Apply and verify the scanner project's rate limit; keep **all deployments of Studio protected**. Production scanner access is a separate project setting and must not weaken Studio protection.
 

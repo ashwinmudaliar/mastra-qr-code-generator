@@ -2,6 +2,7 @@
 .data/
 outputs/
 node_modules/
+public/
 .git/
 README.md
 tsconfig.tsbuildinfo

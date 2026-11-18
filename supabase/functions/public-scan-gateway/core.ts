@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { handleGateway } from "../scan-gateway/core";
+import { handleGateway } from "../scan-gateway/core.ts";
 
 /** The public scanner resolves only this configured private workspace. */
 export function handlePublicScanGateway(request: Request, config: {

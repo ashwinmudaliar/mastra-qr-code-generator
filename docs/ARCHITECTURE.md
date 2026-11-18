@@ -1,12 +1,16 @@
 # Architecture
 
-## The two paths
+## Management and scanning
 
-**Management:** the browser talks to Next.js `/api/*` routes on Vercel. Supabase validates the cookie session with `auth.getUser()`. Queries use that user's session and filter by owner; Postgres row-level security independently enforces the same ownership. An optional `QR_ADMIN_EMAILS` allowlist limits access to the studio.
+**Private workspace management:** the browser talks to relative Next.js `/api/*` routes behind Vercel Deployment Protection. `QR_PRIVATE_PREVIEW=1` activates one persistent workspace without creating a Supabase Auth user or app login session. The server requires Vercel's preview environment and its generated deployment hostname, then calls `workspace-gateway` with the server-only `QR_WORKSPACE_GATEWAY_KEY`. The gateway fixes the workspace ID in deployed configuration, validates each supported operation, and scopes all code/report queries to it. Clients cannot supply a workspace, owner, table, or query. The browser never receives the gateway credential.
+
+Vercel protection is the access boundary in this mode; the environment and hostname checks prevent accidental activation elsewhere. Protection must cover all deployments and APIs. The intended reviewer is one person, but authorized Vercel members, granted users, and holders of a protection bypass share the same workspace. This is not per-user authorization within the app.
+
+**Retained account management:** with private mode disabled, Supabase validates the cookie session with `auth.getUser()`. Queries use that user's session and filter by owner; Postgres row-level security independently enforces the same ownership. An optional `QR_ADMIN_EMAILS` allowlist limits account access. This path remains available for a later login rollout.
 
 **Scanning:** the QR artwork contains `/q/<slug>` at `NEXT_PUBLIC_QR_SCAN_ORIGIN` when configured, otherwise the current browser origin. Next.js validates the slug, classifies the visit, and calls the authenticated Supabase scan gateway. The gateway looks up one code, checks status/expiry, optionally stores a scan, and returns its destination. Next.js responds with a `302` and `Cache-Control: private, no-store, max-age=0`. Editing a destination preserves the slug.
 
-Vercel holds a random, narrowly scoped gateway bearer key. Supabase holds only its SHA-256 verifier in deployed function source; Supabase's built-in full-project credential stays inside its Edge Function runtime. The gateway cannot list codes, edit them, or retrieve reports. The source placeholder intentionally fails closed until deployment substitutes the verifier. A direct service-role implementation remains an optional alternative, not the preferred deployment.
+Vercel holds separate random bearer keys for the scan and workspace gateways. Each deployed function holds its key's SHA-256 verifier; Supabase's built-in full-project credential stays inside the Edge Function runtime. The scan gateway cannot list codes, edit them, or retrieve reports. The workspace gateway supports only management operations for its fixed workspace. Unsubstituted verifier/configuration placeholders fail closed. A direct service-role scan implementation remains an optional alternative, not the preferred deployment.
 
 A scan-storage failure must not strand a visitor: a valid destination still redirects, with a server-side error logged. Lookup failure returns an unavailable page rather than an invented destination. Paused/expired codes return `410`; unknown codes return `404`.
 
@@ -14,8 +18,11 @@ A scan-storage failure must not strand a visitor: a valid destination still redi
 
 | Table | Purpose | Access |
 | --- | --- | --- |
-| `qr_studio_codes` | Owner, random 12-character slug, destination, labels, status/expiry, design, UTMs, timestamps | Owner CRUD through RLS |
-| `qr_studio_scans` | Code reference, UTC timestamp, country/region/city, coarse device | Owner reads through the owned code; gateway inserts |
+| `qr_studio_workspaces` | Persistent private workspace identity | Server-managed; no anonymous or ordinary authenticated access |
+| `qr_studio_codes` | Owner or private workspace, random 12-character slug, destination, labels, status/expiry, design, UTMs, timestamps | Account owners use RLS; the workspace gateway filters by its fixed workspace |
+| `qr_studio_scans` | Code reference, UTC timestamp, country/region/city, coarse device | Account owners read through their codes; workspace gateway reads its codes' scans; scan gateway inserts |
+
+Every code has exactly one ownership scope: `owner_id` references an Auth user, or `private_workspace_id` references a private workspace. A database constraint rejects both-set and neither-set rows. Existing owner RLS stays in place, so private-workspace rows remain inaccessible through anonymous or ordinary authenticated Data API requests. Gateway service credentials bypass RLS; their explicit workspace filters are therefore essential. A later ownership transfer updates these two columns atomically without changing code IDs, slugs, or scan references; see [maintenance](MAINTENANCE.md#adding-account-login-later).
 
 Logos are decoded and re-encoded as small raster data URLs inside the design JSON; there is no separate file bucket. Input accepts PNG/JPEG/WebP up to 2 MB, normalizes to a maximum 256 px dimension, and rejects active SVG content.
 
@@ -39,12 +46,13 @@ The initial schema is versioned under `supabase/migrations/`. `supabase/schema.s
 | Visual system | `app/globals.css`, `docs/DESIGN.md` |
 | Artwork, upload normalization, downloads | `lib/qr-design.ts`, `lib/qr-export.ts`, `components/qr-preview.tsx` |
 | API validation and ownership | `lib/server/validation.ts`, `lib/server/context.ts`, `lib/server/repository.ts` |
+| Protected private workspace | `lib/server/private-preview.ts`, `supabase/functions/workspace-gateway/` |
 | Visit classification and reports | `lib/server/analytics.ts`, `app/api/analytics/route.ts` |
 | Public scan path | `app/q/[slug]/route.ts`, `supabase/functions/scan-gateway/` |
 | Auth | `lib/supabase/`, `app/api/auth/`, `app/auth/callback/route.ts` |
 | Local-only storage | `lib/server/local-store.ts` |
 
-Client/server contracts live in `lib/types.ts`. The database uses snake_case columns; repository conversion exposes camelCase API fields. Keep partial-update validation and owner filtering when changing the contracts.
+Client/server contracts live in `lib/types.ts`. The database uses snake_case columns; repository conversion exposes camelCase API fields. Keep partial-update validation and owner/workspace filtering when changing the contracts. Local review remains a distinct development + explicit flag + loopback-only file store; it never becomes hosted persistence.
 
 ## Boundaries
 

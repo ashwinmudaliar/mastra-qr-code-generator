@@ -52,6 +52,6 @@ export type Analytics = {
 };
 export type SessionInfo = {
   configured: boolean;
-  mode: "local" | "supabase";
+  mode: "local" | "supabase" | "private";
   user: { id: string; email: string } | null;
 };

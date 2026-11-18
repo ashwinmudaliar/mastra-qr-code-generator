@@ -1,15 +1,16 @@
 # Mastra QR Studio: agent instructions
 
-This repository contains a Next.js QR editor on Vercel with Supabase Auth/Postgres. Start with [README.md](README.md); read [docs/DESIGN.md](docs/DESIGN.md) for UI work and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) plus [docs/MAINTENANCE.md](docs/MAINTENANCE.md) for behavior or deployment changes.
+This repository contains a Next.js QR editor on Vercel with Supabase Postgres. Its current private mode uses one durable workspace without an app account; Supabase Auth remains available for later. Start with [README.md](README.md); read [docs/DESIGN.md](docs/DESIGN.md) for UI work and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) plus [docs/MAINTENANCE.md](docs/MAINTENANCE.md) for behavior or deployment changes.
 
 ## Working boundaries
 
 - Keep development work outside iCloud-synced Desktop/Documents. Resolve the destination before creating checkouts, installing dependencies, or building. Default new work to `~/Developer`.
 - This is a public repository. Never commit `.env*` credentials, `.vercel/`, `.data/`, generated test accounts, deployment secrets, or customer scan exports. `.env.example` contains names and empty examples only.
 - Preserve remote history and existing user changes. Use `codex/` branches for feature work; do not force-push or merge unrelated work.
-- Maintain owner-scoped server authorization and database RLS. Supabase user metadata is not an authorization boundary. Keep gateway credentials server-only.
+- Maintain owner-scoped RLS and fixed-workspace filtering. Codes must have exactly one owner or private workspace; anonymous Data API access stays denied. Supabase user metadata is not an authorization boundary. Keep separate scan/workspace gateway credentials server-only.
 - Preserve saved QR slugs and printed-link behavior. Destination edits must not create a new slug; changing the hosting origin cannot update printed codes.
 - Keep local preview bypass restricted to development + explicit flag + loopback. It must never work in production.
+- Hosted account-free mode is separate: require its explicit private flag, Vercel preview environment, and generated deployment hostname. Vercel Deployment Protection is its authentication boundary; keep all deployments protected and verify unauthenticated API requests are blocked. Do not add signup or email setup as a prerequisite to this mode.
 
 ## Product and design
 
@@ -23,7 +24,7 @@ All QR customization must be represented in real downloads. Keep high error corr
 
 Use `npm run typecheck`, `npm test`, and `npm run build` as appropriate. Use the local HTTP verifier after route changes, RLS checks after schema changes, and desktop/mobile screen review after UI changes. Avoid rerunning unrelated checks after unchanged successful results.
 
-Keep applied migrations immutable. See [supabase/SETUP.md](supabase/SETUP.md) for gateway deployment and auth configuration. Preserve deployment privacy unless the user requests a public launch. Report the observed outcome, verification, and remaining launch gaps without claiming untested integrations.
+Keep applied migrations immutable. See [supabase/SETUP.md](supabase/SETUP.md) for gateway deployment and the later Auth path. Preserve deployment privacy unless the user requests a public launch. When adding login later, transfer workspace ownership without changing IDs/slugs/history and retire the workspace gateway credential; removing an environment variable alone does not revoke old deployments. Report observed verification without claiming untested integrations.
 
 The repository-scoped [maintenance skill](.agents/skills/maintain-qr-studio/SKILL.md) provides a focused workflow for recurring changes.
 

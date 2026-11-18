@@ -2,7 +2,9 @@
 
 A QR code workspace for Mastra books and events. Create a code for each event or placement, customize the artwork, and track visits before forwarding people to the book fulfillment site.
 
-Built with Next.js, Supabase Auth/Postgres, and Vercel. The source repository is public; the deployed preview is access-protected for review. Event attendees cannot freely scan a protected preview.
+Built with Next.js, Supabase Postgres, and Vercel. The private preview opens the full studio without a QR Studio account: codes, uploaded logos, and scan history persist in one Supabase workspace. Vercel access protection remains the entry gate. The source repository is public; the preview is private and is not for public event materials.
+
+Supabase Auth is retained for a later login rollout. No signup, email confirmation, or Auth URL setup is needed for the current private workspace. Anyone with authorized Vercel access or a protection bypass can use that workspace, so keep preview access limited to the intended reviewer.
 
 ## What works
 
@@ -26,7 +28,7 @@ npm run dev
 
 Open [the local studio](http://127.0.0.1:3147). The example enables local review mode: codes and scans live in ignored `.data/qr-studio.json`, and no Supabase account is required. It works only with the development server on loopback. A production build never enables this bypass.
 
-To exercise Supabase locally, set `QR_LOCAL_PREVIEW=0`, configure the project URL and publishable key, and sign in. For hosted setup and the scan gateway, see [Supabase setup](supabase/SETUP.md).
+To exercise the retained Supabase Auth path locally, set `QR_LOCAL_PREVIEW=0`, configure the project URL and publishable key, and sign in. The hosted account-free mode is separate: `QR_PRIVATE_PREVIEW=1` works only on its protected Vercel preview address and uses a scoped workspace gateway. For setup, see [Supabase setup](supabase/SETUP.md).
 
 ## Check a change
 
@@ -44,7 +46,7 @@ QR_TEST_URL=http://127.0.0.1:3147 node scripts/verify-backend.mjs
 
 For a browser pass with that server running, install the test browser with `npx playwright install chromium --only-shell` and run `node scripts/audit-ui.mjs`. It checks saved exports and desktop/phone layouts and saves artifacts under ignored `outputs/design-audit/`. For a focused mobile readability pass, run `node scripts/audit-mobile.mjs`. It captures 320/360/390/430px layouts, checks minimum text/control sizes and page overflow, and saves results under ignored `outputs/mobile-readability/`.
 
-The HTTP and browser checks create and remove their own temporary codes. QR tests decode actual artwork, including logos, gradients, frames, and pattern combinations. `tests/rls.sql` verifies database access boundaries inside a transaction that rolls back its fixtures; run it against the intended Supabase test project after schema changes.
+The HTTP and browser checks create and remove their own temporary codes. QR tests decode actual artwork, including logos, gradients, frames, and pattern combinations. `tests/rls.sql` and `tests/private-workspace-rls.sql` verify account/workspace access boundaries in transactions that roll back their fixtures; run both against the intended Supabase test project after schema changes.
 
 ## Project guide
 

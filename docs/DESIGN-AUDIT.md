@@ -6,7 +6,7 @@ Reviewed 2026-11-17 against [Mastra's kitchen sink](https://mastra.ai/dev/kitche
 
 The first pass needed more than a theme change. It contained decorative copy, weak action hierarchy, and controls that implied a more complete product than they delivered. The revised interface uses Mastra's typography and dark palette, but the larger improvement is behavioral: saving is explicit, reports use real data, and limitations appear at the decision that they affect.
 
-The desktop is ready for private design review. The mobile editor separates editing from preview so the main action is reachable without scrolling through every customization control. Public event release still requires a permanent scan domain, publicly reachable scan links, and completed account/email setup. Account setup remains deferred at the user's request.
+The app is ready for private review without an app account. A persistent single-user workspace sits behind Vercel's private access check; the mobile editor separates editing from preview so the main action stays reachable. Public event release still requires a permanent scan domain and an explicit access/security decision. Account login remains deferred at the user's request.
 
 ## Findings and changes
 
@@ -42,6 +42,8 @@ The final readability pass addresses the remaining small-text and cramped-contro
 
 ## Evidence and limits
 
+- On 2026-11-18, the full create/upload/save/reopen/export/destination/scan workflow passed on the protected hosted workspace without a Supabase Auth account or app login session. PNG, rendered SVG, and rendered PDF decoded to the hosted tracking link; two real visits appeared in desktop/mobile analytics. The test code and scans were removed. Unsigned page, session, codes, analytics, and scan requests all remained behind Vercel protection. Both existing account-owner and new private-workspace database access checks passed.
+
 - Real browser checks cover saving, decoding the downloaded PNG's saved tracking link, SVG/PDF downloads, prevention of exporting unsaved changes, the code library, a recorded visit, reports, and desktop/mobile overflow.
 - The final local end-to-end check uploads a real PNG through the file picker, saves and reopens it, downloads all three formats, changes the destination, and verifies that the original tracking link still redirects with campaign tags intact. Two actual link visits appear under the correct event and Mobile device category; exports and HEAD requests add no visits. The temporary code and its scan records are removed afterward.
 - Independent artifact verification renders the actual SVG and one-page PDF, then decodes PNG/SVG/PDF to the same saved link. The SVG's embedded logo matches the normalized saved upload; visual review confirms the logo, purple gradient, frame, caption, and PDF margins. This final workflow runs in local review mode, where geography is Unknown, and does not test a physical phone camera or printed material.
@@ -53,7 +55,7 @@ The final readability pass addresses the remaining small-text and cramped-contro
 - Representative styles are decoder-tested, including logos, gradients, dot/corner combinations, caption frames, and quiet zones. This does not replace scanning a physical print with target phones under event lighting.
 - Server checks cover persistent tracking slugs, destination changes, UTM handling, pause/resume, invalid URLs, cross-site writes, and scan classification. Hosted row-security checks verify owner isolation and anonymous denial.
 - Browser audit captures and disposable exports live under ignored `outputs/design-audit/`; readability captures and measurements live under ignored `outputs/mobile-readability/`. These are not customer data or committed fixtures. Temporary test codes are removed after checks.
-- Hosted checks verified password sign-in, persistent cookie sessions, owner-scoped create/read/update/delete, and a real redirect recorded in analytics using a disposable account. Fixtures were removed. Email delivery and confirmation remain unverified; Supabase Auth Site URL and callback allowlist must match the review deployment.
+- Earlier hosted checks verified the retained account path using a disposable account; fixtures were removed. Email delivery and confirmation remain unverified. Supabase Auth URL/callback settings are needed when account login is introduced, not for the current account-free private workspace.
 - No invented campaign metrics are used. “Scans” are tracking-link visits, not unique people or fulfilled book orders. Geography may be missing or inaccurate; the application stores no raw IP or precise GPS. Hosting-provider logs were outside this audit.
 - Logo normalization accepts PNG/JPEG/WebP. Saved custom brand presets, shared team ownership, full-history scan exports, and fulfillment conversions are future work, not hidden paid features.
 

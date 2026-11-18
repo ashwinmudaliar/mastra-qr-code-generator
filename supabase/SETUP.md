@@ -1,29 +1,63 @@
 # Supabase and Vercel setup
 
-This app uses Next.js on Vercel and Supabase Auth/Postgres. Its two `qr_studio_*` tables are isolated from other applications.
+The current private preview uses one persistent Supabase workspace without a QR Studio account. Vercel access protection gates the app. Supabase Auth remains available for a later login rollout; signup, email confirmation, and Auth URL configuration are not prerequisites for private review.
 
-1. Apply `migrations/20261117172014_qr_studio_initial.sql` to the intended Supabase project. It enables owner-based row security. Run `tests/rls.sql` afterward to verify that accounts cannot read or update one another’s codes, cannot forge scan records through the Data API, and anonymous users cannot read data. The test rolls back all its fixtures.
-2. Set these Vercel environment variables:
-   - `NEXT_PUBLIC_SUPABASE_URL`: the project URL.
-   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: the publishable API key.
-   - `QR_SCAN_GATEWAY_KEY`: a random, server-only bearer key with at least 256 bits of entropy. The authenticated gateway described below uses it for the two narrowly scoped scan operations.
-   - Alternatively, `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`) enables the direct database path. Prefer the gateway so a full-project secret does not leave Supabase.
-   - Optional `NEXT_PUBLIC_QR_SCAN_ORIGIN`: the permanent origin used in exported links; without it, exports use the browser origin. Rebuild after changing it.
-   - Optional `QR_ADMIN_EMAILS`: comma-separated sign-in/sign-up allowlist. Row security still protects every owner’s data.
-3. Configure Supabase Auth’s Site URL and redirect allowlist to include the Vercel review URL and `/auth/callback`. Use exact URLs for production. Confirm the first account’s email before signing in.
-4. Keep Vercel Deployment Protection enabled during private review. Protected previews require Vercel access even on `/q/...` and are not suitable for distributing to event attendees.
-5. Before printing codes for public use, choose a stable public origin and make only the scan endpoint publicly reachable. The dashboard APIs always require Supabase authentication; every data query is owner-scoped. The editor uses `NEXT_PUBLIC_QR_SCAN_ORIGIN` when configured, otherwise the browser origin when exporting. Changing the origin later cannot update existing printed codes.
+## Private workspace
 
-The scan endpoint records UTC timestamp, code, approximate country/region/city from Vercel’s request metadata, and coarse device category. It retains no raw IP address or full user-agent string. Known crawlers, prefetches, and HEAD requests are excluded; counts are visits, not a guarantee of unique people or camera scans. Local review has no geolocation estimate.
+1. Apply the versioned migrations in `migrations/` to the intended Supabase project. They create isolated `qr_studio_*` tables, preserve account-owner RLS, and add private workspace ownership. Each code must have exactly one `owner_id` or `private_workspace_id`. Run `tests/rls.sql` and `tests/private-workspace-rls.sql` afterward; anonymous and ordinary authenticated Data API clients must not access private-workspace rows.
+2. Provision one workspace and retain its generated ID across deployments. Bind that ID to the workspace gateway's deployed configuration. Do not create a hidden Auth user or a new workspace on each browser visit.
+3. Configure these Vercel preview environment variables:
 
-`QR_LOCAL_PREVIEW=1` enables a local development-only file store and reviewer identity for loopback requests. It never activates in a production build, even if the variable is set. Its `.data/` directory must stay untracked. Never rely on local preview data for an event.
+   | Variable | Purpose |
+   | --- | --- |
+   | `NEXT_PUBLIC_SUPABASE_URL` | Project URL |
+   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client-safe publishable key for the retained account path |
+   | `QR_PRIVATE_PREVIEW=1` | Enables the hosted private workspace only in Vercel's preview environment at its generated deployment hostname |
+   | `QR_WORKSPACE_GATEWAY_KEY` | Server-only random bearer for management of the fixed workspace |
+   | `QR_SCAN_GATEWAY_KEY` | Separate server-only random bearer for scan resolution/recording |
+   | `NEXT_PUBLIC_QR_SCAN_ORIGIN` | Optional permanent scan origin; omit during review to use the current browser origin |
 
-## Authenticated scan gateway
+   Generate independent keys with at least 256 bits of entropy. Never put a gateway key in a `NEXT_PUBLIC_` variable. Keep `QR_LOCAL_PREVIEW` unset on Vercel.
+4. Deploy both gateways as described below. Preserve Vercel Authentication with All Deployments protection (`ssoProtection.deploymentType: "all"`), no protection exceptions, and no public aliases. Verify unsigned page, management API, and scan requests are blocked before sharing the generated preview URL.
+5. Test the complete hosted flow through authorized Vercel access using a disposable code. Check persistence in a fresh browser session, then remove only the test data. A successful local test or build is not proof of hosted access.
 
-The `scan-gateway` Edge Function resolves a single code by its unguessable slug and optionally records a coarse scan event. It cannot list codes, change destinations, read analytics, or operate on arbitrary tables. Supabase's built-in server credential stays inside the Edge Function runtime.
+The intended reviewer is one person, but Vercel-authorized members, granted users, and holders of an automation/shareable-link bypass can use this same workspace. Keep those access grants limited. Do not distribute a bypass token in the review URL. [Vercel protection](https://vercel.com/docs/deployment-protection) is the authentication boundary; the application's environment/hostname checks supplement it.
 
-Generate a cryptographically random 32-byte bearer key and save it only as Vercel's server-side `QR_SCAN_GATEWAY_KEY`. Compute the key's SHA-256 hex digest. In memory during deployment, replace the single `__SCAN_GATEWAY_KEY_SHA256__` placeholder in `functions/scan-gateway/index.ts` with that digest; never replace it with the key itself. Upload `index.ts`, `core.ts`, and `deno.json` together. Deploy with `verify_jwt: false` because the function implements its own bearer authentication; it fails closed while the placeholder remains unsubstituted. The endpoint sends no CORS headers and is only called by the Vercel server. Never put this key in a `NEXT_PUBLIC_` variable.
+Protected QR links also require preview access. Before producing public event materials, choose a stable public scan origin and complete the separate release checks in [Maintenance](../docs/MAINTENANCE.md). Changing the configured origin cannot update an already printed QR code.
 
-The function rejects unknown keys before accessing the database, bounds request bodies to 4 KB, validates metadata, honors pause/expiry, and returns only the destination for a single code. A scan storage error is logged without payload data and does not interrupt the visitor's redirect. Rotate by redeploying with a new digest and updating Vercel's key in the same maintenance window.
+## Gateway deployment
 
-Exclude `supabase/functions/**` from the Next.js TypeScript project; its entrypoint uses Deno and a pinned import map. `tests/scan-gateway.test.ts` exercises the platform-neutral core through Node.
+Both functions keep Supabase's full-project server credential inside the Edge Function runtime. Vercel receives only the two scoped bearer keys. For each key, compute its SHA-256 digest and substitute the corresponding verifier placeholder in memory while deploying; never substitute or commit the raw key. Deploy the full function import set with `verify_jwt: false`, since each function performs its own bearer authentication before database access. Unsubstituted configuration fails closed. Neither endpoint sends CORS headers or accepts browser credentials as a substitute for its bearer.
+
+### Workspace gateway
+
+`workspace-gateway` supports code CRUD and scan retrieval for one workspace. Its deployed configuration fixes the workspace ID; callers cannot choose an owner, workspace, table, or arbitrary query. Its separate verifier must reject the scan key. Every database operation remains scoped to the configured workspace, including update/delete IDs and scan joins. Input validation and body limits apply before processing supported operations.
+
+Use `supabase/functions/workspace-gateway/index.ts` as the entrypoint and `supabase/functions/workspace-gateway/deno.json` as the import map. Preserve these repository-relative paths in the deployment bundle:
+
+- `supabase/functions/workspace-gateway/index.ts`
+- `supabase/functions/workspace-gateway/core.ts`
+- `supabase/functions/workspace-gateway/store.ts`
+- `supabase/functions/workspace-gateway/deno.json`
+- `lib/server/validation.ts`
+- `lib/qr-design.ts`
+
+In the entrypoint content supplied for deployment, replace `__WORKSPACE_GATEWAY_KEY_SHA256__` with the management key's digest and `__PRIVATE_WORKSPACE_ID__` with the provisioned workspace UUID. Keep the placeholders in committed source. The shared validation/design files are required by the relative imports; deploying only the gateway directory is incomplete.
+
+The gateway's service credential bypasses RLS, so those explicit filters are essential. Do not weaken anonymous/account policies to make the private app work. Retain the same workspace ID on redeployments so codes, normalized logos, and scan history persist.
+
+### Scan gateway
+
+`scan-gateway` resolves a single code by its random slug and optionally records a coarse visit. It cannot list or edit codes or read analytics. In `functions/scan-gateway/index.ts`, replace `__SCAN_GATEWAY_KEY_SHA256__` with the digest in memory and upload `index.ts`, `core.ts`, and `deno.json` together.
+
+It bounds requests to 4 KB, validates metadata, honors pause/expiry, and returns only one destination. A scan-storage error is logged without request payload data and does not interrupt a valid redirect. It records UTC time, approximate Vercel country/region/city, and device category, without retaining raw IP addresses or full user agents. Known crawlers, prefetches, and HEAD requests are excluded; counts are link visits.
+
+Rotate a compromised bearer by replacing its deployed verifier and Vercel variable in the same maintenance window, then verify that gateway's flow. Keep the two credentials independent. `supabase/functions/**` is excluded from the Next.js TypeScript project; its Deno imports are pinned and its platform-neutral logic is tested through Node.
+
+## Local review and later login
+
+`QR_LOCAL_PREVIEW=1` remains a development-server + loopback-only file store and reviewer identity. It stores ignored `.data/qr-studio.json` and never activates in a production build. This is independent of the hosted private workspace and has no estimated geography.
+
+When account login is requested, configure Supabase Auth's Site URL, exact callback allowlist, and email delivery; optionally set `QR_ADMIN_EMAILS`. Verify the intended user's account, then follow [the ownership transfer](../docs/MAINTENANCE.md#adding-account-login-later). Move the workspace's codes to that owner without recreating IDs/slugs/scans, disable the private flag, and retire the workspace gateway credential. The scan gateway continues independently.
+
+An optional direct scan path accepts `SUPABASE_SECRET_KEY` or legacy `SUPABASE_SERVICE_ROLE_KEY`; leave these unset on Vercel when using the preferred scoped scan gateway.

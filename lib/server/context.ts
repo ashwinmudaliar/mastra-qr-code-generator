@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient, isSupabaseConfigured } from "../supabase/server";
 import { ApiError } from "./validation";
+import { isPrivatePreview } from "./private-preview";
 export type RequestContext = {
-  mode: "local" | "supabase";
+  mode: "local" | "supabase" | "private";
   user: {id:string; email:string};
   db: SupabaseClient | null;
 };
@@ -11,6 +12,7 @@ export function isLocalPreview(request: Request) {
   return process.env.NODE_ENV === "development" && process.env.QR_LOCAL_PREVIEW === "1" && ["localhost","127.0.0.1","[::1]"].includes(hostname);
 }
 export async function getContext(request: Request): Promise<RequestContext> {
+  if (isPrivatePreview(request)) return {mode:"private",user:{id:"private-workspace",email:"Private preview"},db:null};
   if (isLocalPreview(request)) return {mode:"local",user:{id:"local-reviewer",email:"Local preview"},db:null};
   if (!isSupabaseConfigured()) throw new ApiError(503,"Connect Supabase to save codes and view analytics.");
   const db = await createSupabaseServerClient();

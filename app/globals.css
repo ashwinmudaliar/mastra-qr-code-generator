@@ -286,6 +286,7 @@ tr.archived .code-name{color:var(--muted)}
 .chart-empty strong{color:var(--text);font-weight:450}
 
 /* Sticker sheets */
+.dialog:focus{outline:none}
 .sticker-dialog{width:min(900px,100%)}
 .sticker-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:28px;align-items:start}
 .sheet-preview{position:relative;width:100%;background:#fff;border-radius:3px}

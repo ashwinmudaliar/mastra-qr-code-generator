@@ -84,26 +84,45 @@ export function Menu({ label, items, disabled }: { label: string; items: MenuIte
   </div>;
 }
 
-/** Modal dialog with a focus trap. Escape and the backdrop close it unless work is pending. */
+/**
+ * Modal dialog with a focus trap. Escape and the backdrop close it unless work is pending.
+ * Keys are handled at the document so a control disabled while work is pending cannot
+ * leak focus out of the dialog; when the work finishes, focus returns inside.
+ */
 export function Dialog({ labelledBy, describedBy: description, onClose, busy, children, className = "", fallbackFocus }: { labelledBy: string; describedBy?: string; onClose: () => void; busy?: boolean; children: ReactNode; className?: string; fallbackFocus?: RefObject<HTMLElement | null> }) {
   const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  const pending = useRef(busy);
+  useEffect(() => { close.current = onClose; pending.current = busy; });
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     ref.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus() ?? ref.current?.querySelector<HTMLElement>("button")?.focus();
     return () => { if (previous?.isConnected) previous.focus(); else fallbackFocus?.current?.focus(); };
   }, [fallbackFocus]);
-  function onKeyDown(event: KeyboardEvent) {
-    if (event.key === "Escape" && !busy) { event.preventDefault(); onClose(); return; }
-    if (event.key !== "Tab") return;
-    const focusable = [...(ref.current?.querySelectorAll<HTMLElement>("button:not(:disabled), select:not(:disabled), input:not(:disabled), a[href]") ?? [])];
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-  }
+  useEffect(() => {
+    const dialog = ref.current;
+    if (busy || !dialog || dialog.contains(document.activeElement)) return;
+    (dialog.querySelector<HTMLElement>("[data-autofocus]:not(:disabled)") ?? dialog.querySelector<HTMLElement>("button:not(:disabled)") ?? dialog).focus();
+  }, [busy]);
+  useEffect(() => {
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      const dialog = ref.current;
+      if (!dialog) return;
+      if (event.key === "Escape") { event.preventDefault(); if (!pending.current) close.current(); return; }
+      if (event.key !== "Tab") return;
+      const focusable = [...dialog.querySelectorAll<HTMLElement>("button:not(:disabled), select:not(:disabled), input:not(:disabled), a[href]")];
+      if (!focusable.length) { event.preventDefault(); dialog.focus(); return; }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!dialog.contains(document.activeElement) || document.activeElement === dialog) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
+      else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
   return <div className="overlay" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-    <div className={`dialog ${className}`} ref={ref} role="dialog" aria-modal="true" aria-labelledby={labelledBy} aria-describedby={description} onKeyDown={onKeyDown}>{children}</div>
+    <div className={`dialog ${className}`} ref={ref} role="dialog" aria-modal="true" aria-labelledby={labelledBy} aria-describedby={description} tabIndex={-1}>{children}</div>
   </div>;
 }
 

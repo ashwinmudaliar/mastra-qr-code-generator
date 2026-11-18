@@ -56,6 +56,7 @@ export default function Studio() {
   const [exportSize, setExportSize] = useState("2048");
   const [sheetOpen, setSheetOpen] = useState(false);
   const isPhone = useMediaQuery("(max-width: 760px)");
+  const behindSheet = isPhone && sheetOpen && view === "editor";
   const codeFilterRef = useRef<HTMLSelectElement>(null);
   const sheetClose = useRef<HTMLButtonElement>(null);
   const warnings = getDesignWarnings(form.design);
@@ -231,7 +232,7 @@ export default function Studio() {
   const destinationHint = "Change it any time. Printed codes follow, and the tracking link stays the same.";
 
   return <div className="app">
-    <header className="topbar">
+    <header className="topbar" inert={behindSheet}>
       <div className="topbar-inner">
         <button type="button" className="brand" aria-label="QR Studio codes" disabled={busy} onClick={() => navigate("codes")}><img src="/mastra-logo.svg" alt="" /><span>QR Studio</span></button>
         <nav aria-label="Main">
@@ -254,7 +255,7 @@ export default function Studio() {
       {view === "results" && <Results codes={codes} filters={filters} onFilters={setFilters} historical={historical} onHistorical={setHistorical} />}
 
       {view === "editor" && <div className="page editor">
-        <div className="editor-head">
+        <div className="editor-head" inert={behindSheet}>
           <button type="button" className="back-link" aria-label="Back to codes" disabled={busy} onClick={() => navigate("codes")}><Icon name="back" />Codes</button>
           <div className="editor-title">
             <h1>{title}</h1>
@@ -264,7 +265,7 @@ export default function Studio() {
         </div>
 
         <div className="editor-grid">
-          <form className="editor-form" onSubmit={submit} noValidate>
+          <form className="editor-form" onSubmit={submit} noValidate inert={behindSheet}>
             <fieldset className="editor-fields" disabled={busy} aria-busy={busy}>
               <section className="form-section" aria-labelledby="link-heading">
                 <h2 id="link-heading">Link</h2>
@@ -403,7 +404,7 @@ export default function Studio() {
           </aside>
         </div>
 
-        {isPhone && <div className="mobile-bar">
+        {isPhone && <div className="mobile-bar" inert={behindSheet}>
           <button type="button" className="mini-art" aria-label={sheetOpen ? "Hide artwork and downloads" : "Show artwork and downloads"} aria-expanded={sheetOpen} aria-controls="artwork-panel" onClick={() => setSheetOpen(open => !open)}><QRPreview value={previewValue} design={form.design} size={44} alt="" /></button>
           <div className="mini-meta"><strong className={saveError || Object.values(fieldErrors).some(Boolean) ? "error-text" : undefined}>{saveError || Object.values(fieldErrors).some(Boolean) ? "Check the form" : stateText}</strong><span>{sheetOpen ? "Artwork and downloads" : "Tap the code to preview"}</span></div>
           <button type="button" className="btn primary" disabled={busy} onClick={primaryAction}>{busy ? "…" : readyToDownload ? "Download" : "Save"}</button>

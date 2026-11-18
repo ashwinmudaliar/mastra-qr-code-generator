@@ -104,14 +104,19 @@ export function drawStickerSheet(pdf: JsPDF, template: StickerTemplate, image: S
   }
 }
 
+/** jsPDF's built-in Helvetica only covers WinAnsi, which has no inch or minus sign. */
+export function pdfText(value: string): string {
+  return value.replace(/″/g, '"').replace(/−/g, "-");
+}
+
 export function drawAlignmentTest(pdf: JsPDF, template: StickerTemplate, offset: Offset) {
   const dx = clampOffset(offset.x);
   const dy = clampOffset(offset.y);
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(8.5);
   pdf.setTextColor(70);
-  pdf.text(`Alignment test · ${template.name} · print at 100% (Actual size) on plain paper, then hold it against a label sheet to the light.`, template.columns[0], 0.38);
-  pdf.text(`Printer offset: across ${formatOffset(dx)}, down ${formatOffset(dy)}. Each dashed square should sit exactly on a label.`, template.columns[0], 0.52);
+  pdf.text(pdfText(`Alignment test · ${template.name} · print at 100% (Actual size) on plain paper, then hold it against a label sheet to the light.`), template.columns[0], 0.38);
+  pdf.text(pdfText(`Printer offset: across ${formatOffset(dx)}, down ${formatOffset(dy)}. Each dashed square should sit exactly on a label.`), template.columns[0], 0.52);
   labelPositions(template).forEach((slot, index) => {
     const x = slot.x + dx;
     const y = slot.y + dy;

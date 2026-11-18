@@ -90,7 +90,7 @@ export function CodesList({ codes, origin, loading, busy, search, onSearch, filt
             {items.map(code => {
               const status = statusOf(code);
               return <tr key={code.id} className={code.archivedAt ? "archived" : undefined}>
-                <td className="thumb-cell"><QRPreview value={trackingLink(origin, code.slug)} design={code.design} size={40} className="thumb" /></td>
+                <td className="thumb-cell"><QRPreview value={trackingLink(origin, code.slug)} design={code.design} size={40} className="thumb" alt="" /></td>
                 <td className="code-cell">
                   {code.archivedAt ? <span className="code-name">{code.name}</span> : <button type="button" className="code-name" disabled={busy} onClick={() => actions.edit(code)}>{code.name}</button>}
                   <span className="code-sub">{[code.placement, code.book].filter(Boolean).join(" · ") || "No placement"}</span>

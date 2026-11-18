@@ -23,10 +23,10 @@ export function useQRSource(value: string, design: QRDesign) {
   return { source, error };
 }
 
-export function QRPreview({ value, design, size = 260, className = "" }: { value: string; design: QRDesign; size?: number; className?: string }) {
+export function QRPreview({ value, design, size = 260, className = "", alt = "QR code artwork" }: { value: string; design: QRDesign; size?: number; className?: string; alt?: string }) {
   const { source, error } = useQRSource(value, design);
   return <div className={`qr-preview ${className}`} style={{ width: size, maxWidth: "100%", minHeight: source ? undefined : size }}>
-    {source ? <img src={source} width={size} alt="QR code artwork" /> : <span className={error ? "qr-preview-error" : "qr-preview-loading"} role={error ? "alert" : "status"}>{error || (size >= 120 ? "Building your QR…" : "")}</span>}
+    {source ? <img src={source} width={size} alt={alt} /> : <span className={error ? "qr-preview-error" : "qr-preview-loading"} role={error ? "alert" : "status"}>{error || (size >= 120 ? "Building your QR…" : "")}</span>}
   </div>;
 }
 

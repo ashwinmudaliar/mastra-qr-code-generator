@@ -255,7 +255,7 @@ export default function Studio() {
 
       {view === "editor" && <div className="page editor">
         <div className="editor-head">
-          <button type="button" className="back-link" disabled={busy} onClick={() => navigate("codes")}><Icon name="back" />Codes</button>
+          <button type="button" className="back-link" aria-label="Back to codes" disabled={busy} onClick={() => navigate("codes")}><Icon name="back" />Codes</button>
           <div className="editor-title">
             <h1>{title}</h1>
             {editing && <div className="status-control"><label htmlFor="field-status" className="sr-only">Code status</label>
@@ -288,7 +288,7 @@ export default function Studio() {
                   <div className="presets">{DESIGN_PRESETS.map(preset => {
                     const selected = JSON.stringify(form.design) === JSON.stringify(preset.design);
                     return <button type="button" key={preset.id} className="preset" aria-pressed={selected} title={preset.description} onClick={() => change("design", { ...preset.design })}>
-                      <span className="preset-art" style={{ background: preset.design.background }}><QRPreview value="https://www.mastrabooks.dev" design={preset.design} size={56} /></span>{preset.name}
+                      <span className="preset-art" style={{ background: preset.design.background }}><QRPreview value="https://www.mastrabooks.dev" design={preset.design} size={56} alt="" /></span>{preset.name}
                     </button>;
                   })}</div>
                 </Group>
@@ -404,7 +404,7 @@ export default function Studio() {
         </div>
 
         {isPhone && <div className="mobile-bar">
-          <button type="button" className="mini-art" aria-label={sheetOpen ? "Hide artwork and downloads" : "Show artwork and downloads"} aria-expanded={sheetOpen} aria-controls="artwork-panel" onClick={() => setSheetOpen(open => !open)}><QRPreview value={previewValue} design={form.design} size={44} /></button>
+          <button type="button" className="mini-art" aria-label={sheetOpen ? "Hide artwork and downloads" : "Show artwork and downloads"} aria-expanded={sheetOpen} aria-controls="artwork-panel" onClick={() => setSheetOpen(open => !open)}><QRPreview value={previewValue} design={form.design} size={44} alt="" /></button>
           <div className="mini-meta"><strong className={saveError || Object.values(fieldErrors).some(Boolean) ? "error-text" : undefined}>{saveError || Object.values(fieldErrors).some(Boolean) ? "Check the form" : stateText}</strong><span>{sheetOpen ? "Artwork and downloads" : "Tap the code to preview"}</span></div>
           <button type="button" className="btn primary" disabled={busy} onClick={primaryAction}>{busy ? "…" : readyToDownload ? "Download" : "Save"}</button>
         </div>}

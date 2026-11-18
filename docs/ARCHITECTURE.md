@@ -46,9 +46,13 @@ The initial schema is versioned under `supabase/migrations/`. `supabase/schema.s
 
 | Area | Files |
 | --- | --- |
-| Workspace UI and its state | `components/studio.tsx`, `app/page.tsx` |
+| Workspace shell, editor and its state | `components/studio.tsx`, `app/page.tsx` |
+| Codes list and Results | `components/codes-list.tsx`, `components/results.tsx`, `components/scan-chart.tsx` |
+| Shared controls (fields, menu, dialog) | `components/ui.tsx` |
 | Visual system | `app/globals.css`, `docs/DESIGN.md` |
 | Artwork, upload normalization, downloads | `lib/qr-design.ts`, `lib/qr-export.ts`, `components/qr-preview.tsx` |
+| Sticker sheets | `lib/sticker-sheet.ts`, `components/sticker-sheet-dialog.tsx` |
+| Tracking link and draft placeholder | `lib/tracking-link.ts`, `app/q/[slug]/route.ts` |
 | API validation and ownership | `lib/server/validation.ts`, `lib/server/context.ts`, `lib/server/repository.ts` |
 | Protected private workspace | `lib/server/private-preview.ts`, `supabase/functions/workspace-gateway/` |
 | Visit classification and reports | `lib/server/analytics.ts`, `app/api/analytics/route.ts` |

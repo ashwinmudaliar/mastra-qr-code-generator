@@ -87,7 +87,13 @@ test("sheet and alignment PDFs are US Letter, with the artwork embedded once", a
   const outlines: number[][] = [];
   const rect = alignment.rect.bind(alignment);
   alignment.rect = ((x: number, y: number, w: number, h: number, style?: string | null) => { outlines.push([x, y, w, h]); return rect(x, y, w, h, style); }) as typeof alignment.rect;
+  const texts: string[] = [];
+  const text = alignment.text.bind(alignment);
+  alignment.text = ((value: string, ...rest: unknown[]) => { texts.push(value); return (text as (...args: unknown[]) => unknown)(value, ...rest); }) as typeof alignment.text;
   drawAlignmentTest(alignment, template, { x: 1 / 32, y: 0 });
+  assert.ok(texts.length >= 3);
+  for (const value of texts) assert.match(value, /^[\x20-\x7e\u00a0-\u00ff]*$/, `PDF text must stay within the built-in font: ${value}`);
+  assert.ok(texts.some(value => value.includes('+1/32"')));
   const cuts = outlines.filter(([, , w]) => w === 3);
   assert.deepEqual(cuts.map(([x, y]) => [x, y]), labelPositions(template).map(l => [l.x + 1 / 32, l.y]));
   assert.equal(alignment.getNumberOfPages(), 1);

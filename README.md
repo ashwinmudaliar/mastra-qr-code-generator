@@ -10,9 +10,9 @@ Supabase Auth is retained for a later login rollout. No signup, email confirmati
 
 - Dynamic links with editable destinations, pause/resume, optional expiry, and reversible archival that keeps scan and fulfillment history.
 - Logo uploads, colors and gradients, dot/corner styles, frames, and captions.
-- PNG, SVG, and PDF downloads using the saved tracking link.
+- PNG, SVG, and PDF downloads using the saved tracking link, plus print-at-home sticker sheets for 3″ square labels (six per US Letter sheet, PLS451 / Avery 94101 layout) with an alignment test page.
 - Event, book, placement, and UTM labels; bulk creation of up to 25 codes.
-- A searchable code library, event/book/code comparisons, daily scan reports, country/city/device summaries, and CSV exports.
+- Codes grouped by event, and Results that compare scans and book requests by event, code, or book, with daily scans, approximate scan locations, shipping destinations, and CSV exports.
 - Private Books attribution preview: signed QR visits connect to test book requests and simulated shipment/delivery results. Books production remains unchanged; no real books or emails are sent in this flow.
 
 A scan is a tracking-link visit, not a unique person or fulfilled order. Location is approximate. Use separate codes for reliable event attribution. Existing printed static QR codes do not automatically acquire tracking.

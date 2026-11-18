@@ -1,5 +1,6 @@
 import type { Options } from "qr-code-styling";
 import { type QRDesign, contrastRatio } from "./qr-design";
+import { STICKER_TEMPLATES, drawAlignmentTest, drawStickerSheet, needsBleed, newSheetDocument, printPixels, type Offset } from "./sticker-sheet";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -105,8 +106,10 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
+const fileName = (name: string) => name.replace(/[^a-z0-9_-]/gi, "-").slice(0, 90) || "mastra-qr";
+
 export async function exportQR(value: string, design: QRDesign, { format, size = 2048, name = "mastra-qr" }: QRExportOptions) {
-  const safeName = name.replace(/[^a-z0-9_-]/gi, "-").slice(0, 90) || "mastra-qr";
+  const safeName = fileName(name);
   const svg = await createSVG(value, design, size);
   if (format === "svg") return download(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }), `${safeName}.svg`);
   const canvas = await rasterize(svg, size);
@@ -121,6 +124,33 @@ export async function exportQR(value: string, design: QRDesign, { format, size =
   pdf.setProperties({ title: safeName, creator: "Mastra QR Studio" });
   pdf.addImage(canvas.toDataURL("image/png"), "PNG", 10, 10, printWidth, printHeight);
   pdf.save(`${safeName}.pdf`);
+}
+
+export type StickerSheetOptions = { templateId?: string; positions: number[]; offset: Offset; name?: string };
+
+function stickerTemplate(id?: string) {
+  const template = STICKER_TEMPLATES.find(item => item.id === id) ?? STICKER_TEMPLATES[0];
+  return template;
+}
+
+/** A Letter PDF at physical size: the saved artwork placed on each selected label. */
+export async function exportStickerSheet(value: string, design: QRDesign, { templateId, positions, offset, name = "mastra-qr" }: StickerSheetOptions) {
+  if (!positions.length) throw new Error("Choose at least one label to print.");
+  const template = stickerTemplate(templateId);
+  const svg = await createSVG(value, design, 1600);
+  const [, width, height] = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/)?.map(Number) ?? [0, 1, 1];
+  const aspect = width / height;
+  const canvas = await rasterize(svg, printPixels(template, aspect));
+  const pdf = await newSheetDocument(template, `${name} sticker sheet`);
+  drawStickerSheet(pdf, template, { dataUrl: canvas.toDataURL("image/png"), aspect }, { positions, offset, background: design.frame === "banner" ? color(design.frameColor) : color(design.background, "#ffffff"), bleed: needsBleed(design) });
+  pdf.save(`${fileName(name)}-sticker-sheet.pdf`);
+}
+
+export async function exportAlignmentTest(offset: Offset, templateId?: string) {
+  const template = stickerTemplate(templateId);
+  const pdf = await newSheetDocument(template, "Sticker sheet alignment test");
+  drawAlignmentTest(pdf, template, offset);
+  pdf.save("sticker-alignment-test.pdf");
 }
 
 /** Raster-only import is decoded and re-encoded, stripping metadata and active content. */

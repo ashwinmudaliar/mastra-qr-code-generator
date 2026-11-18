@@ -29,6 +29,8 @@ export function fulfillmentFilters(url: URL, codes: QRCodeRecord[], now = new Da
   const codeId = url.searchParams.get("codeId") ?? url.searchParams.get("code");
   const event = url.searchParams.get("event");
   if (event && event.length > 160) throw new ApiError(400, "Choose an event from your workspace.");
+  // Archived codes retain an authorized reporting identity; filter only by
+  // explicit code/event selection, never by current library visibility/status.
   let scoped = codes;
   if (codeId) {
     scoped = scoped.filter(code => code.id === codeId);

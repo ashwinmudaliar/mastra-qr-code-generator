@@ -19,12 +19,14 @@ Inspect the current implementation and applicable tests before editing. Preserve
 
 Keep archived identities in scan and fulfillment reporting. Archival stops redirects and editing; restoration preserves identity and leaves the code paused. Do not reintroduce permanent deletion through a browser or gateway cleanup shortcut.
 
-Keep the three access modes distinct: local loopback review, protected Vercel private workspace, and Supabase account sessions. Private preview does not require signup or email setup. Preserve workspace filters and the exactly-one-owner constraint; never grant anonymous database access to avoid a login screen. When introducing account login, follow the ownership-transfer and credential-retirement steps in Maintenance so saved links and scan history survive.
+Keep the management modes distinct: local loopback review, protected Vercel private workspace, and Supabase account sessions. Public scanning uses the separate `scanner/` deployment and workspace-scoped public scan gateway; keep Studio protection enabled and management/Books credentials out of that deployment. An app account transition is not required for this separated launch. Public scan links must use the verified permanent origin; preview exports remain unchanged.
+
+Private preview does not require signup or email setup. Preserve workspace filters and the exactly-one-owner constraint; never grant anonymous database access to avoid a login screen. When introducing account login, follow the ownership-transfer and credential-retirement steps in Maintenance so saved links and scan history survive.
 
 For a bug, establish a failing behavior or concrete state, then verify the repaired outcome. For a UI change, inspect desktop and phone widths plus relevant empty, error, loading, and saved states. Distinguish observed problems from suggested future work.
 
 ## Verify and report
 
-Use the repository's typecheck, test, build, HTTP verifier, and RLS checks according to what changed. Read test scripts before pointing them at a database; use disposable records and retain their cleanup boundaries. For hosted private access changes, verify protected page/API/scan requests without Vercel access and test the real workspace flow through authorized access. Do not treat a successful build or local test as proof of hosted access, persistence, or signup.
+Use the repository's typecheck, test, build, HTTP verifier, and RLS checks according to what changed. Read test scripts before pointing them at a database; use disposable records and retain their cleanup boundaries. For hosted private access changes, verify protected page/API/scan requests without Vercel access and test the real workspace flow through authorized access. For public-scanner changes, also test unsigned redirects and recorded visits, the absence of management routes, HEAD/bot exclusions, paused/expired/archived codes, and the deployed firewall limit. Do not treat a successful build or local test as proof of hosted access, persistence, or signup.
 
 Report what changed, why, how it was verified, and any remaining constraint that affects use. In a design audit, prioritize the few issues that impede making, finding, exporting, or interpreting a code. Do not imply paid-product parity for capabilities the implementation does not provide.

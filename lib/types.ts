@@ -56,6 +56,7 @@ export type SessionInfo = {
   mode: "local" | "supabase" | "private";
   user: { id: string; email: string } | null;
   booksPreviewOrigin?: string;
+  publicScanOrigin?: string;
 };
 
 export type FulfillmentMetrics = {

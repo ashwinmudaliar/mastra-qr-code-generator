@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
+import { publicScanOrigin } from "./public-scanning";
 
 type Environment = Record<string, string | undefined>;
 const label = z.string().max(160).refine(value => !/[\u0000-\u001f\u007f]/.test(value));
@@ -23,6 +24,7 @@ export function isBooksIntake(url: URL, previewOrigin?: string): boolean {
 }
 
 export function booksPreviewOrigin(mode: "local" | "private" | "supabase", env: Environment = process.env): string | undefined {
+  if (publicScanOrigin(env)) return undefined;
   if (mode === "supabase" || !env.QR_BOOKS_PREVIEW_ORIGIN) return undefined;
   try {
     const url = new URL(env.QR_BOOKS_PREVIEW_ORIGIN);
@@ -47,6 +49,7 @@ export function signAttribution(input: unknown, secret: string | undefined, now 
 /** This is optional tracking. Missing metadata/keys never prevent a redirect.
  * The caller establishes the private/local runtime before selecting a mode. */
 export function booksDestination(destination: string, attribution: unknown, mode: "local" | "private" | "supabase", env: Environment = process.env): string {
+  if (publicScanOrigin(env)) return destination;
   if (mode === "supabase") return destination;
   try {
     const url = new URL(destination);

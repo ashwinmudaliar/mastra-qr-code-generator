@@ -2,7 +2,7 @@
 
 A QR code workspace for Mastra books and events. Create a code for each event or placement, customize the artwork, and track visits before forwarding people to the book fulfillment site.
 
-Built with Next.js, Supabase Postgres, and Vercel. The private preview opens the full studio without a QR Studio account: codes, uploaded logos, and scan history persist in one Supabase workspace. Vercel access protection remains the entry gate. The source repository is public; the preview is private and is not for public event materials.
+Built with Next.js, Supabase Postgres, and Vercel. The protected Studio opens without a QR Studio account: codes, uploaded logos, and scan history persist in one Supabase workspace. Vercel access protection remains the entry gate. Public scans use the separate `scanner/` service at the selected permanent origin, `https://qr.mastrabooks.dev`. Follow the [public launch checks](docs/MAINTENANCE.md#public-launch-checks) before producing event materials; this source configuration is not proof of a completed launch.
 
 Supabase Auth is retained for a later login rollout. No signup, email confirmation, or Auth URL setup is needed for the current private workspace. Anyone with authorized Vercel access or a protection bypass can use that workspace, so keep preview access limited to the intended reviewer.
 
@@ -15,7 +15,9 @@ Supabase Auth is retained for a later login rollout. No signup, email confirmati
 - Codes grouped by event, and Results that compare scans and book requests by event, code, or book, with daily scans, approximate scan locations, shipping destinations, and CSV exports.
 - Private Books attribution preview: signed QR visits connect to test book requests and simulated shipment/delivery results. Books production remains unchanged; no real books or emails are sent in this flow.
 
-A scan is a tracking-link visit, not a unique person or fulfilled order. Location is approximate. Use separate codes for reliable event attribution. Existing printed static QR codes do not automatically acquire tracking.
+A scan is a tracking-link visit, not a unique person or fulfilled order. Location is approximate. Use separate codes for reliable event attribution. Existing printed static QR codes do not automatically acquire tracking, and exports containing a protected preview address cannot acquire the permanent domain later.
+
+Public scanning forwards to the saved destination, including the existing Books portal, without changing Books fulfillment or adding live attribution. Real fulfillment reporting remains a separate release; any connected preview request/shipment results are simulated.
 
 ## Run locally
 
@@ -55,6 +57,7 @@ The HTTP and browser checks create and archive their own temporary codes and rec
 - [Architecture](docs/ARCHITECTURE.md): data flow, ownership, scan semantics, and source map.
 - [Books attribution](docs/FULFILLMENT.md): integration contract, isolated preview, reporting definitions, and release boundary.
 - [Maintenance](docs/MAINTENANCE.md): development, deployment, migrations, and launch checks.
+- [Public scanner](scanner/README.md): the independently deployed redirect service.
 - [Agent instructions](AGENTS.md): repository rules for future coding agents.
 - [Maintenance skill](.agents/skills/maintain-qr-studio/SKILL.md): a focused workflow for agent-assisted changes.
 - [Design audit](docs/DESIGN-AUDIT.md): observed issues, changes, and remaining simplifications.

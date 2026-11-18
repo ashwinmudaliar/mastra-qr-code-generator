@@ -11,7 +11,8 @@ This repository contains a Next.js QR editor on Vercel with Supabase Postgres. I
 - Preserve saved QR slugs and printed-link behavior. Destination edits must not create a new slug; changing the hosting origin cannot update printed codes.
 - Archive codes instead of permanently deleting them. Preserve code IDs, scans, and fulfillment report scope; restore to paused. Keep permanent fixture cleanup outside application/gateway endpoints and target only exact operator-created records.
 - Keep local preview bypass restricted to development + explicit flag + loopback. It must never work in production.
-- Hosted account-free mode is separate: require its explicit private flag, Vercel preview environment, and generated deployment hostname. Vercel Deployment Protection is its authentication boundary; keep all deployments protected and verify unauthenticated API requests are blocked. Do not add signup or email setup as a prerequisite to this mode.
+- Hosted account-free Studio requires its explicit private flag, Vercel preview environment, and generated deployment hostname. Vercel Deployment Protection is its authentication boundary; keep all Studio deployments protected and verify unauthenticated API requests are blocked. Do not add signup or email setup as a prerequisite.
+- Public scanning is a separate `scanner/` Vercel project at `qr.mastrabooks.dev`, with only GET/HEAD tracking routes and a workspace-scoped public scan credential. Never copy management, service-role, Books preview, or bypass credentials into it. Public scanning does not authorize a Books production release. Keep the Studio protected when enabling public links.
 
 ## Product and design
 

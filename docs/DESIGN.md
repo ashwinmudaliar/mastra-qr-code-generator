@@ -31,7 +31,7 @@ Tokens live at the top of `app/globals.css`. Fonts load from the official Mastra
 
 ## Structure
 
-Two destinations in a 56 px top bar: **Codes** (home) and **Results**. Creating and editing are a view of Codes, reached from **New code** or a code's name. The private or local preview chip sits at the right of the top bar.
+Two destinations in a 56 px top bar: **Codes** (home) and **Results**. Creating and editing are a view of Codes, reached from **New code** or a code's name. The access chip sits at the right of the top bar: distinguish a private dashboard using public scan links from a private/local preview.
 
 - **Codes:** grouped by event label, with destination, all-time scans, requests from the last 12 months (when fulfillment reporting is connected) and status (Active, Paused, Expired, Archived, each with its own colour). Row actions are Download PNG, Copy link and a menu: Edit, Duplicate, Sticker sheet…, Pause/Activate, View results, Archive…. Pausing shows a toast with Undo, because it breaks printed codes immediately. Archive keeps history: its dialog says printed copies stop opening, that scans and requests stay in Results, and offers Pause instead. Archived codes are hidden behind the Archived filter, where Restore returns them paused.
 - **Editor:** one page. **Link** (destination, name, then event, placement and book label) and **Look** (presets, logo, colour) are always visible. **More styling**, **Tracking options** and **Create several codes** start collapsed, each showing a one-line summary of its current settings; opening or closing them never changes values. Code status sits in the title row once a code exists. The artwork panel holds the state line, the artwork, the tracking link, the one preview note, the primary action and the secondary formats.
@@ -39,7 +39,7 @@ Two destinations in a 56 px top bar: **Codes** (home) and **Results**. Creating 
 
 ## Phones
 
-Below 761 px the artwork panel becomes a bottom sheet. A fixed bar keeps a live thumbnail (tap to open the sheet) and the primary action (Save or Download) in reach, so the form never competes with the preview for the same scroll position. Controls are at least 44 px tall and inputs 48 px with 16 px text. Codes become cards with scans, requests and status on one line; the comparison table becomes cards with every number labelled; recent scans become labelled rows. Toasts appear under the top bar so they never cover the action bar.
+Below 761 px the artwork panel becomes a bottom sheet. A fixed bar keeps a live thumbnail (tap to open the sheet) and the primary action (Save or Download) in reach, so the form never competes with the preview for the same scroll position. Controls are at least 44 px tall and inputs 48 px with 16 px text. Codes become cards with scans, requests and status grouped together; long status dates wrap without hiding text or overflowing at 320 px; the comparison table becomes cards with every number labelled; recent scans become labelled rows. Toasts appear under the top bar so they never cover the action bar.
 
 ## State and wording
 
@@ -47,7 +47,7 @@ An unsaved code previews a placeholder tracking link (`/q/draftpreview`, the sam
 
 Saving and exporting are separate. The primary action is Save code for a new code, Save changes for an edited one, and Download PNG for an unchanged saved one; reverting every edit restores Download PNG. All formats, including the sticker sheet, export only the saved state and are disabled while edits are unsaved; downloading never saves. Save failures keep the input. Leaving unsaved work asks first. While a save or logo upload is pending, the form and navigation are locked; the phone preview toggle stays usable.
 
-Use “scan” for a tracking-link visit. Do not claim precise location, unique people, guaranteed scannability or confirmed orders. During private review, say that scanners need preview access and that the deployment isn't ready for printed event material. Never regenerate a slug when editing or restoring. Archived codes stay selectable in Results, labelled as archived, and stay in historical totals.
+Use “scan” for a tracking-link visit. Do not claim precise location, unique people, guaranteed scannability or confirmed orders. When exports use the protected preview origin, say that scanners need preview access and the links are for test prints. Once the server confirms the verified public origin, identify the dashboard as private and the scan links as public; do not retain the preview-access warning on public exports. Public-link mode shows live fulfillment reporting as not connected; the isolated Books simulation remains available only in its protected preview. Never regenerate a slug when editing or restoring. Archived codes stay selectable in Results, labelled as archived, and stay in historical totals.
 
 ## Sticker sheets
 

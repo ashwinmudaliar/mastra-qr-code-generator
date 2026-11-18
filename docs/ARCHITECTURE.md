@@ -4,13 +4,17 @@
 
 **Private workspace management:** the browser talks to relative Next.js `/api/*` routes behind Vercel Deployment Protection. `QR_PRIVATE_PREVIEW=1` activates one persistent workspace without creating a Supabase Auth user or app login session. The server requires Vercel's preview environment and its generated deployment hostname, then calls `workspace-gateway` with the server-only `QR_WORKSPACE_GATEWAY_KEY`. The gateway fixes the workspace ID in deployed configuration, validates each supported operation, and scopes all code/report queries to it. Clients cannot supply a workspace, owner, table, or query. The browser never receives the gateway credential.
 
-Vercel protection is the access boundary in this mode; the environment and hostname checks prevent accidental activation elsewhere. Protection must cover all deployments and APIs. The intended reviewer is one person, but authorized Vercel members, granted users, and holders of a protection bypass share the same workspace. This is not per-user authorization within the app.
+Vercel protection is the access boundary in this mode; the environment and hostname checks prevent accidental activation elsewhere. Protection must cover all Studio deployments and APIs. The intended reviewer is one person, but authorized Vercel members, granted users, and holders of a protection bypass share the same workspace. This is not per-user authorization within the app.
 
 **Retained account management:** with private mode disabled, Supabase validates the cookie session with `auth.getUser()`. Queries use that user's session and filter by owner; Postgres row-level security independently enforces the same ownership. An optional `QR_ADMIN_EMAILS` allowlist limits account access. This path remains available for a later login rollout.
 
-**Scanning:** the QR artwork contains `/q/<slug>` at `NEXT_PUBLIC_QR_SCAN_ORIGIN` when configured, otherwise the current browser origin. Next.js validates the slug, classifies the visit, and calls the authenticated Supabase scan gateway. The gateway looks up one code, checks status/expiry, optionally stores a scan, and returns its destination. Next.js responds with a `302` and `Cache-Control: private, no-store, max-age=0`. Editing a destination preserves the slug.
+**Public scanning:** `scanner/` is an independent Vercel project, `mastra-qr-scanner`, with no Studio bundle or management routes. It serves GET/HEAD `/q/<12-character-slug>` at `https://qr.mastrabooks.dev`; other paths return 404 and unsupported methods return 405. Its only database access is `public-scan-gateway`, authenticated with a separate bearer and bound to the same private workspace as Studio. It validates the slug, classifies the visit, and receives a destination after gateway availability checks and optional scan recording. Responses use `302`, `Cache-Control: private, no-store, max-age=0`, and `Referrer-Policy: no-referrer`. Editing a destination preserves the slug.
 
-Vercel holds separate random bearer keys for the scan and workspace gateways. Each deployed function holds its key's SHA-256 verifier; Supabase's built-in full-project credential stays inside the Edge Function runtime. The scan gateway cannot list codes, edit them, or retrieve reports. The workspace gateway supports only management operations for its fixed workspace. Unsubstituted verifier/configuration placeholders fail closed. A direct service-role scan implementation remains an optional alternative, not the preferred deployment.
+The scanner has no workspace key, full-project database key, app account session, or Books preview credentials. It never signs Books attribution or rewrites a Books destination to the test portal. Distributed request limits belong at the scanner’s Vercel firewall; in-memory serverless counters and bot classification are insufficient.
+
+**Export origin:** QR artwork uses `NEXT_PUBLIC_QR_SCAN_ORIGIN` when configured, otherwise the Studio browser origin. The Studio server confirms public-link mode with matching `QR_PUBLIC_SCAN_ORIGIN`; only configure this after the public scanner is verified. The dashboard stays protected. Existing preview exports retain their original URL. The protected Next.js `/q/<slug>` route and its original `scan-gateway` remain available for isolated preview checks.
+
+Vercel holds independent random bearer keys for the private scan, public scan, and workspace gateways. Each deployed function holds its key's SHA-256 verifier; Supabase's built-in full-project credential stays inside the Edge Function runtime. Neither scan gateway can list codes, edit them, or retrieve reports. The public gateway additionally filters every lookup to its fixed workspace. The workspace gateway supports only management operations for its fixed workspace. Unsubstituted verifier/configuration placeholders fail closed. A direct service-role scan implementation remains an optional alternative, not the preferred deployment.
 
 A scan-storage failure must not strand a visitor: a valid destination still redirects, with a server-side error logged. Lookup failure returns an unavailable page rather than an invented destination. Archived/paused/expired codes return `410`; unknown codes return `404`.
 
@@ -38,7 +42,8 @@ The initial schema is versioned under `supabase/migrations/`. `supabase/schema.s
 - Reports aggregate in UTC, group by event/book/code and coarse location/device, and expose the latest 100 visits. Exact daily counts accompany the chart. CSV exports of recent visits are not complete event-history exports.
 - Event/book/placement labels identify the code's campaign. Location cannot establish which booth or event a person attended.
 - UTM parameters preserve other query parameters and URL fragments. Fulfillment conversion reporting requires an integration with the destination site.
-- The protected Books preview integration adds a signed reference only for a recorded visit to the standard Books root intake. Separate partner/card/Agents in Prod routes are excluded. Saved destinations and slugs stay unchanged; a configured private preview rewrites the Books root destination to the protected test portal. See [Books attribution](FULFILLMENT.md).
+- The protected Books preview integration, when public-link mode is disabled, adds a signed reference only for a recorded visit to the standard Books root intake. Separate partner/card/Agents in Prod routes are excluded. Saved destinations and slugs stay unchanged; a configured private preview rewrites the Books root destination to the protected test portal. See [Books attribution](FULFILLMENT.md).
+- Public-link mode disables simulated Books redirects and reports in the active Studio. Results states that live fulfillment reporting is not connected; older protected preview deployments retain their isolated simulation.
 - Fulfillment reports use the original visit date and frozen event labels. Existing scan reports group by the code's current labels. The UI explains historical-label selections and does not calculate a misleading conversion rate across those definitions.
 - Scan records currently have no automatic retention/expiry policy. Analytics reads paginated records and aggregates in the application; high-volume traffic will need database aggregation and a retention decision.
 
@@ -56,7 +61,8 @@ The initial schema is versioned under `supabase/migrations/`. `supabase/schema.s
 | API validation and ownership | `lib/server/validation.ts`, `lib/server/context.ts`, `lib/server/repository.ts` |
 | Protected private workspace | `lib/server/private-preview.ts`, `supabase/functions/workspace-gateway/` |
 | Visit classification and reports | `lib/server/analytics.ts`, `app/api/analytics/route.ts` |
-| Public scan path | `app/q/[slug]/route.ts`, `supabase/functions/scan-gateway/` |
+| Public scan path | `scanner/`, `supabase/functions/public-scan-gateway/` |
+| Protected preview scan path | `app/q/[slug]/route.ts`, `supabase/functions/scan-gateway/` |
 | Auth | `lib/supabase/`, `app/api/auth/`, `app/auth/callback/route.ts` |
 | Local-only storage | `lib/server/local-store.ts` |
 

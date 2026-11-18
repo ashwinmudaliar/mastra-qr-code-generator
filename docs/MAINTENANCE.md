@@ -58,13 +58,21 @@ Validate an actual hosted QR→Books submission→simulated shipped/delivered→
 
 ## Deployment
 
-The current stack is Vercel + Supabase. Vercel Git integration is not connected during private review; deployments are manual, protected previews. The account-free workspace requires `QR_PRIVATE_PREVIEW=1` and a server-only `QR_WORKSPACE_GATEWAY_KEY`, both scoped to the Vercel preview environment. It uses durable Supabase storage; `QR_LOCAL_PREVIEW` must not be deployed. See [Supabase setup](../supabase/SETUP.md) for configuration and both scoped Edge Functions.
+The current stack is Vercel + Supabase. Studio deployments remain manual, protected previews with Git integration disconnected. Public scanning deploys separately from `scanner/` to `mastra-qr-scanner`; do not deploy the complete Studio publicly. The account-free workspace requires `QR_PRIVATE_PREVIEW=1` and a server-only `QR_WORKSPACE_GATEWAY_KEY`, both scoped to the Vercel preview environment. It uses durable Supabase storage; `QR_LOCAL_PREVIEW` must not be deployed. See [Supabase setup](../supabase/SETUP.md) for gateway configuration.
 
-Keep Vercel Authentication set to All Deployments (`ssoProtection.deploymentType: "all"`) while private mode is enabled. Verify the actual preview target, status, generated hostname, absence of public aliases/exceptions, and unauthenticated page/API behavior before sharing the URL. Do not assume a deployment command selected the intended target. Protection is the login boundary: anyone authorized by Vercel or holding a bypass can use the same workspace. Do not distribute a bypass/shareable link as the review URL. Connect Git only when its settings preserve these boundaries; do not publish main as a side effect of repository setup.
+Keep Vercel Authentication set to All Deployments (`ssoProtection.deploymentType: "all"`) on the Studio project while private mode is enabled. Verify the actual preview target, status, generated hostname, absence of public aliases/exceptions, and unauthenticated page/API behavior before sharing the URL. Do not assume a deployment command selected the intended target. Protection is the login boundary: anyone authorized by Vercel or holding a bypass can use the same workspace. Do not distribute a bypass/shareable link as the review URL. Connect Git only when its settings preserve these boundaries; do not publish main as a side effect of repository setup.
 
-For each gateway, deploy its full import set with the appropriate key's SHA-256 verifier substituted in memory. The workspace gateway also binds one provisioned workspace ID in deployed configuration. Keep scan and workspace keys separate; include both in credential scans. Never commit either bearer or a service-role key. `verify_jwt: false` is intentional because the functions authenticate their scoped bearer before touching the database. Do not remove those checks or enable anonymous table access as a shortcut.
+For each gateway, deploy its full import set with the appropriate key's SHA-256 verifier substituted in memory. The workspace and public scan gateways bind the same provisioned workspace ID in deployed configuration. Keep private-scan, public-scan, and workspace keys independent; include every credential in secret scans. Never commit either bearer or a service-role key. `verify_jwt: false` is intentional because the functions authenticate their scoped bearer before touching the database. Do not remove those checks or enable anonymous table access as a shortcut.
 
-Set `NEXT_PUBLIC_QR_SCAN_ORIGIN` to the permanent public scan origin before producing event materials. It is a build-time browser setting; rebuild after changing it. Without that setting, the editor derives tracking URLs from its current browser origin, so preview exports contain preview URLs. Adding or changing a domain later cannot change printed URL contents. Verify the URL decoded from an actual export, not just the environment setting.
+After verifying the public scanner, set both `NEXT_PUBLIC_QR_SCAN_ORIGIN` and the server-only `QR_PUBLIC_SCAN_ORIGIN` to `https://qr.mastrabooks.dev` on Studio. Matching values confirm public-link mode and disable Books preview rewriting/reporting on that Studio deployment. A mismatch must not silently advertise public readiness. Set the permanent origin before producing event materials. It is a build-time browser setting; rebuild after changing it. Without that setting, the editor derives tracking URLs from its current browser origin, so preview exports contain preview URLs. Adding or changing a domain later cannot change printed URL contents. Verify the URL decoded from an actual export, not just the environment setting.
+
+## Public scanner deployment
+
+Deploy only `scanner/`, linked to its own `mastra-qr-scanner` project. Its server configuration contains the Supabase project URL (`SUPABASE_URL`) and `QR_PUBLIC_SCAN_GATEWAY_KEY`; the new `public-scan-gateway` uses that key’s verifier and a fixed workspace filter. Do not install workspace, full-project database, Books, bypass, or local-preview credentials in this project. Keep the existing private gateways and Studio protection unchanged. See [scanner setup](../scanner/README.md) and [gateway setup](../supabase/SETUP.md#public-scan-gateway).
+
+Attach only the selected scan subdomain, `qr.mastrabooks.dev`. The public origin must work without Vercel authentication; generated scanner previews may remain protected. Never add the public domain to Studio or remove Studio protection. Record the scanner deployment ID, source commit, domain/protection settings, and verified HTTP results before updating Studio’s export origin.
+
+Configure a distributed Vercel WAF fixed-window limit before public campaigns. The initial planned threshold is 600 requests per minute per IP, allowing for shared conference Wi-Fi; verify the deployed value and adjust using observed traffic. Test 429 behavior without writing scan fixtures by using a nonexistent slug. Scope the rule to this scanner project, and inspect the complete draft before publishing firewall changes. Monitor rejected requests alongside redirect/gateway errors.
 
 ## Adding account login later
 
@@ -72,19 +80,19 @@ Keep account setup deferred until requested. When introducing it, configure Auth
 
 Transfer the workspace's codes in one database transaction by setting `owner_id` to that user and clearing `private_workspace_id` together. Check the affected record count; preserve every code ID, slug, design, and scan row. Existing owner RLS then grants the user access through the same code references. Verify their library and analytics before retiring private mode.
 
-Disable `QR_PRIVATE_PREVIEW`, remove `QR_WORKSPACE_GATEWAY_KEY` from Vercel configuration, and redeploy the account path. Revoke the workspace gateway's verifier or retire that function as well: old preview deployments retain their environment values, so removing a variable alone does not revoke their credential. Keep the independent scan gateway and Vercel protection working throughout the transition. Public scanning is a separate release decision.
+Disable `QR_PRIVATE_PREVIEW`, remove `QR_WORKSPACE_GATEWAY_KEY` from Vercel configuration, and redeploy the account path. Revoke the workspace gateway's verifier or retire that function as well: old preview deployments retain their environment values, so removing a variable alone does not revoke their credential. Keep scan resolution and Vercel protection working throughout the transition. If public scanning is active, update its gateway ownership scope in the same release so transferring codes away from the private workspace does not break printed links. Test the permanent scan origin before retiring the old ownership path.
 
 ## Public launch checks
 
-- Choose the permanent scan origin, confirm its ownership, and keep it renewed while print materials circulate.
-- Complete the private-workspace-to-account transition before making scan links accessible to anonymous attendees; preserve authorization for management APIs.
-- Configure Supabase Auth Site URL, redirect allowlist, and email delivery for the final app origin. Verify signup, confirmation, sign-in, sign-out, and expired sessions.
-- Scan an exported image from a signed-out phone using mobile data. Verify the destination and one recorded visit; test pause, expiry, destination edits, and HEAD exclusions.
-- Decide whether studio signup should be allowlisted, and configure `QR_ADMIN_EMAILS` accordingly.
-- Add suitable request/abuse limits before public campaigns. Existing bot detection is not rate limiting.
-- Set a scan-retention policy and monitoring for redirect failures, gateway errors, and database growth.
+- Confirm ownership/TLS for `qr.mastrabooks.dev` and keep the domain renewed while print materials circulate.
+- Verify the public scanner has only scan credentials, its gateway rejects unknown credentials and other-workspace slugs, and management/auth/report paths return 404. Unsupported methods must return 405 without lookup or recording.
+- Recheck that the Studio page, session, codes, analytics, fulfillment, and its own scan routes remain blocked without Vercel access. App account setup remains deferred; public scanning does not require transferring workspace ownership.
+- Decode actual PNG/SVG/PDF and sticker-sheet exports to the permanent public origin. Scan an export from a signed-out phone using mobile data; verify the saved destination, campaign tags and one recorded visit. Check destination edits preserve the slug, pause/expiry/archive return 410, malformed/unknown/draft links return 404, and HEAD/prefetch/bots create no visits.
+- Verify a scan-recording failure still redirects, a lookup outage returns 503, and redirects remain uncached. Confirm the scanner does not rewrite Books URLs or add preview attribution. Do not submit a real Books order as a scanner check.
+- Verify the deployed firewall rule and 429 behavior. Record monitoring ownership for redirect failures, gateway recording errors, rate-limit traffic, and database growth. Select a scan-retention policy; the app does not automatically delete old scans.
+- Use exact synthetic fixture IDs for cleanup and report any residual fixtures. Review live UI wording: the dashboard is private, scan links are public, and live fulfillment reporting is not connected.
 
-The private review is not a declaration that these launch checks have passed.
+Account login and real Books fulfillment reporting have separate release paths. These instructions and private-review results are not evidence that the public launch checks have passed.
 
 ## Failure and rollback
 

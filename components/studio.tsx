@@ -220,10 +220,11 @@ export default function Studio() {
   if (!session) return <div className="center-page"><img src="/mastra-logo.svg" alt="Mastra" width="120" /><p role="status">{sessionError || "Loading QR Studio…"}</p>{sessionError && <button type="button" className="btn primary" onClick={() => void refreshSession()}>Try again</button>}</div>;
   if (!session.user) return <Auth session={session} onSignedIn={refreshSession} />;
 
-  const previewValue = editing ? trackingLink(origin, editing.slug) : draftLink(origin || "https://qr.mastra.ai");
-  const previewNote = session.mode === "private" ? `Private preview: scanners need preview access${session.booksPreviewOrigin && isBooksHome(form.destination) ? ", and Books links open the test form" : ""}. Don’t print for events yet.`
+  const publicLinks = Boolean(session.publicScanOrigin && session.publicScanOrigin === origin);
+  const previewValue = editing ? trackingLink(origin, editing.slug) : draftLink(origin || "https://qr.mastrabooks.dev");
+  const previewNote = publicLinks ? "Anyone can scan saved codes. Editing and Results stay private." : session.mode === "private" ? `Private preview: scanners need preview access${session.booksPreviewOrigin && isBooksHome(form.destination) ? ", and Books links open the test form" : ""}. Don’t print for events yet.`
     : session.mode === "local" ? "Local preview: these links only open on this computer." : undefined;
-  const stickerNote = session.mode === "private" ? "Private preview: test prints only. Attendees can’t open these links until there’s a public scan domain."
+  const stickerNote = publicLinks ? "Scan a test print before printing the full batch." : session.mode === "private" ? "Private preview: test prints only. Attendees can’t open these links until there’s a public scan domain."
     : session.mode === "local" ? "Local preview: test prints only. These links only open on this computer." : undefined;
   const stateText = readyToDownload ? (form.status === "paused" ? "Saved · paused" : "Saved") : editing ? "Unsaved changes" : "Not saved";
   const primaryLabel = busy ? processingLogo ? "Adding logo…" : readyToDownload ? "Downloading…" : "Saving…" : readyToDownload ? "Download PNG" : editing ? "Save changes" : "Save code";
@@ -241,7 +242,7 @@ export default function Studio() {
         </nav>
         <div className="topbar-end">
           {session.mode === "supabase" ? <><span className="account">{session.user.email}</span><button type="button" className="btn ghost small" disabled={busy} onClick={() => void signOut()}>Sign out</button></>
-            : <span className="mode-chip"><span className="dot" aria-hidden="true" /><span className="mode-long">{session.mode === "local" ? "Local preview" : "Private preview"}</span><span className="mode-short">Preview</span></span>}
+            : <span className="mode-chip"><span className="dot" aria-hidden="true" /><span className="mode-long">{session.mode === "local" ? "Local preview" : publicLinks ? "Private workspace" : "Private preview"}</span><span className="mode-short">{publicLinks ? "Private" : "Preview"}</span></span>}
         </div>
       </div>
     </header>

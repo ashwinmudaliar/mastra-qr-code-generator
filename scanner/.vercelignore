@@ -1,0 +1,7 @@
+.env*
+.data/
+outputs/
+node_modules/
+.git/
+README.md
+tsconfig.tsbuildinfo

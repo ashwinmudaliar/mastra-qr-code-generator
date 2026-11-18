@@ -1,69 +1,38 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { QRPreview } from "./qr-preview";
-import { ScanChart } from "./scan-chart";
-import { FulfillmentSummary } from "./fulfillment-summary";
+import { CodesList, type CodeFilter } from "./codes-list";
+import { Results, type ResultsFilters } from "./results";
+import { StickerSheetDialog } from "./sticker-sheet-dialog";
+import { Dialog, Field, Group, Icon, api, describedBy, formatDate, formatNumber, useMediaQuery } from "./ui";
 import { DEFAULT_DESIGN, DESIGN_PRESETS, getDesignWarnings, type QRDesign } from "@/lib/qr-design";
 import { exportQR, normalizeLogo, type ExportFormat } from "@/lib/qr-export";
-import type { Analytics, QRCodeInput, QRCodeRecord, SessionInfo } from "@/lib/types";
+import { draftLink, trackingLink } from "@/lib/tracking-link";
+import type { QRCodeInput, QRCodeRecord, SessionInfo } from "@/lib/types";
 
-type View = "create" | "library" | "analytics" | "guide";
-type Tab = "content" | "design" | "tracking";
-const books = ["Both books", "Principles of Building AI Agents", "Patterns for Building AI Agents"];
+type View = "codes" | "editor" | "results";
+type FieldName = "destination" | "name";
+type Toast = { message: string; action?: { label: string; run: () => void } };
+
+const BOOKS = ["Both books", "Principles of Building AI Agents", "Patterns for Building AI Agents"];
+const DOT_LABELS: Record<QRDesign["dots"], string> = { square: "Square", rounded: "Rounded", dots: "Dots", classy: "Classy" };
 const initialForm = (): QRCodeInput => ({ name: "", destination: "https://www.mastrabooks.dev", event: "", book: "Both books", placement: "", status: "active", expiresAt: null, design: { ...DEFAULT_DESIGN }, utm: { enabled: true, source: "event", medium: "qr", campaign: "", content: "" } });
 const editableInput = (code: QRCodeRecord): QRCodeInput => ({ name: code.name, destination: code.destination, event: code.event, book: code.book, placement: code.placement, status: code.status, expiresAt: code.expiresAt, design: { ...code.design }, utm: { ...code.utm } });
-const codeLabel = (code: QRCodeRecord) => `${code.name}${code.archivedAt ? " (archived)" : ""}`;
-
-async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...options?.headers }, cache: "no-store" });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : data.error?.message || "Something went wrong. Please try again.");
-  return data;
-}
-function Icon({ name, size = 20 }: { name: string; size?: number }) {
-  const paths: Record<string, ReactNode> = {
-    plus: <path d="M12 5v14M5 12h14" />,
-    qr: <><rect x="3" y="3" width="6" height="6" rx="1" /><rect x="15" y="3" width="6" height="6" rx="1" /><rect x="3" y="15" width="6" height="6" rx="1" /><path d="M15 15h3v3h3M15 21v-3M21 15v-3M12 3v3M3 12h5M12 9v6" /></>,
-    chart: <><path d="M4 4v16h16M8 15v-4M13 15V7M18 15v-6" /></>,
-    palette: <><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4c-1-1 0-3 2-3h2a3 3 0 0 0 3-3 9 9 0 0 0-9-8Z" /><path d="M7 10h.01M10 7h.01M15 7h.01M6 14h.01" /></>,
-    book: <><path d="M12 5v15M3 4h5a4 4 0 0 1 4 2 4 4 0 0 1 4-2h5v15h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3Z" /></>,
-    arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
-    download: <><path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5" /></>,
-    check: <path d="m5 12 4 4L19 6" />,
-    globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a18 18 0 0 0 0 18 18 18 0 0 0 0-18Z" /></>,
-    link: <><path d="m10 13 4-4M8 15l-2 2a4 4 0 0 1-5-5l4-4a4 4 0 0 1 5 0M14 9l2-2a4 4 0 0 1 5 5l-4 4a4 4 0 0 1-5 0" /></>,
-    copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4H4v12h4" /></>,
-    search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></>,
-    edit: <><path d="m15 4 5 5M4 20l5-1L21 7l-4-4L5 15Z" /></>,
-    chevron: <path d="m8 5 7 7-7 7" />,
-    shield: <><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z" /><path d="m8 12 3 3 5-6" /></>,
-    pin: <><path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 0 1 14 0Z" /><circle cx="12" cy="10" r="2" /></>,
-    sparkle: <><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z" /></>,
-    close: <path d="m6 6 12 12M18 6 6 18" />,
-    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
-    logout: <><path d="M9 4H4v16h5M9 12h12m-5-5 5 5-5 5" /></>,
-  };
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] || paths.qr}</svg>;
-}
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) { return <label className="field"><span>{label}</span>{children}{hint && <small className="field-help">{hint}</small>}</label>; }
-function downloadCSV(name: string, rows: unknown[][]) {
-  const text = rows.map(row => row.map(cell => { let v = String(cell ?? ""); if (/^[=+@\-\t\r]/.test(v)) v = "'" + v; return `"${v.replace(/"/g, '""')}"`; }).join(",")).join("\r\n");
-  const url = URL.createObjectURL(new Blob(["\ufeff" + text], { type: "text/csv;charset=utf-8" }));
-  const a = document.createElement("a"); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
 const isBooksHome = (value: string) => { try { const url = new URL(value); return ["mastrabooks.dev", "www.mastrabooks.dev"].includes(url.hostname) && url.pathname === "/"; } catch { return false; } };
 const campaignLabel = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 160);
-const fmtDate = (value: string) => new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function styleSummary(design: QRDesign) {
+  const frame = design.frame === "none" ? "no frame" : design.frame === "bottom" ? "outline frame" : "filled frame";
+  const logo = design.logo === "none" ? "no logo" : `logo ${Math.round(design.logoSize * 100)}%`;
+  return [`${DOT_LABELS[design.dots].toLowerCase()} dots`, `${design.corners === "dot" ? "circle" : design.corners} corners`, design.gradient === "none" ? "" : "gradient", frame, logo].filter(Boolean).join(" · ");
+}
 
 export default function Studio() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [sessionError, setSessionError] = useState("");
-  const [view, setView] = useState<View>("create");
-  const [tab, setTab] = useState<Tab>("content");
-  const [mobilePane, setMobilePane] = useState<"edit" | "preview">("edit");
-  const mobileSwitcher = useRef<HTMLDivElement>(null);
-  const sidebarRef = useRef<HTMLElement>(null);
+  const [view, setView] = useState<View>("codes");
   const [form, setForm] = useState<QRCodeInput>(initialForm);
   const [savedInput, setSavedInput] = useState<QRCodeInput>(initialForm);
   const [editing, setEditing] = useState<QRCodeRecord | null>(null);
@@ -73,33 +42,25 @@ export default function Studio() {
   const [processingLogo, setProcessingLogo] = useState(false);
   const [loadingCodes, setLoadingCodes] = useState(false);
   const [error, setError] = useState("");
-  const [toast, setToast] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
+  const [saveError, setSaveError] = useState("");
+  const [toast, setToast] = useState<Toast | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [days, setDays] = useState("30");
-  const [filterCode, setFilterCode] = useState("");
-  const [eventFilter, setEventFilter] = useState("");
-  const [mobileBreakdown, setMobileBreakdown] = useState<"country" | "city" | "device">("country");
-  const [analytics, setAnalytics] = useState<Analytics | null>(null);
-  const [analyticsQueryKey, setAnalyticsQueryKey] = useState("");
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [fulfillmentLoading, setFulfillmentLoading] = useState(false);
-  const [fulfillmentCampaigns, setFulfillmentCampaigns] = useState<{ codeId: string; event: string }[]>([]);
-  const [analyticsError, setAnalyticsError] = useState("");
-  const [analyticsRefresh, setAnalyticsRefresh] = useState(0);
-  const [bulkOpen, setBulkOpen] = useState(false);
+  const [codeFilter, setCodeFilter] = useState<CodeFilter>("current");
+  const [filters, setFilters] = useState<ResultsFilters>({ days: "30", event: "", codeId: "" });
+  const [historical, setHistorical] = useState<{ codeId: string; event: string }[]>([]);
   const [bulk, setBulk] = useState("");
   const [bulkResult, setBulkResult] = useState("");
   const [archiveTarget, setArchiveTarget] = useState<QRCodeRecord | null>(null);
+  const [stickerTarget, setStickerTarget] = useState<QRCodeRecord | null>(null);
   const [exportSize, setExportSize] = useState("2048");
-  const logoInput = useRef<HTMLInputElement>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const isPhone = useMediaQuery("(max-width: 760px)");
+  const codeFilterRef = useRef<HTMLSelectElement>(null);
+  const sheetClose = useRef<HTMLButtonElement>(null);
   const warnings = getDesignWarnings(form.design);
   const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(savedInput);
   const readyToDownload = Boolean(editing) && !hasUnsavedChanges;
-  const archiveDialog = useRef<HTMLDivElement>(null);
-  const libraryFilter = useRef<HTMLSelectElement>(null);
-  const analyticsQuery = `days=${days}${eventFilter ? `&event=${encodeURIComponent(eventFilter)}` : ""}${filterCode ? `&codeId=${encodeURIComponent(filterCode)}` : ""}`;
-  const analyticsMatchesFilters = analyticsQueryKey === analyticsQuery;
 
   async function refreshSession() {
     try { const data = await api<SessionInfo>("/api/session"); setSession(data); setSessionError(""); }
@@ -111,94 +72,105 @@ export default function Studio() {
     catch (e) { setError(e instanceof Error ? e.message : "Could not load QR codes."); }
     finally { setLoadingCodes(false); }
   }
-  useEffect(() => { const configuredOrigin = process.env.NEXT_PUBLIC_QR_SCAN_ORIGIN; try { const scanOrigin = new URL(configuredOrigin || window.location.origin); setOrigin(["https:", "http:"].includes(scanOrigin.protocol) ? scanOrigin.origin : window.location.origin); } catch { setOrigin(window.location.origin); } void refreshSession(); }, []);
-  useEffect(() => { setFulfillmentCampaigns([]); if (session?.user) void loadCodes(); }, [session?.user?.id]);
-  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(""), 4500); return () => clearTimeout(id); }, [toast]);
   useEffect(() => {
-    if (view !== "analytics" || !session?.user) return;
-    let current = true; setAnalyticsLoading(true); setAnalyticsError("");
-    api<Analytics>(`/api/analytics?${analyticsQuery}`).then(data => { if (current) { setAnalytics(data); setAnalyticsQueryKey(analyticsQuery); } }).catch(e => { if (current) setAnalyticsError(e.message); }).finally(() => { if (current) setAnalyticsLoading(false); });
-    return () => { current = false; };
-  }, [view, analyticsQuery, session?.user?.id, codes, analyticsRefresh]);
+    const configured = process.env.NEXT_PUBLIC_QR_SCAN_ORIGIN;
+    try { const scanOrigin = new URL(configured || window.location.origin); setOrigin(["https:", "http:"].includes(scanOrigin.protocol) ? scanOrigin.origin : window.location.origin); }
+    catch { setOrigin(window.location.origin); }
+    void refreshSession();
+  }, []);
+  useEffect(() => { setHistorical([]); if (session?.user) void loadCodes(); }, [session?.user?.id]);
+  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.action ? 8000 : 4500); return () => clearTimeout(id); }, [toast]);
   useEffect(() => {
     if (!hasUnsavedChanges) return;
     const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [hasUnsavedChanges]);
-  useEffect(() => {
-    if (!archiveTarget) return;
-    const previous = document.activeElement as HTMLElement | null;
-    archiveDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    return () => { if (previous?.isConnected) previous.focus(); else libraryFilter.current?.focus(); };
-  }, [archiveTarget]);
-  useEffect(() => {
-    const sidebar = sidebarRef.current;
-    if (!sidebar) return;
-    const update = () => document.documentElement.style.setProperty("--studio-nav-height", `${sidebar.getBoundingClientRect().height}px`);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(sidebar);
-    return () => observer.disconnect();
-  }, [session?.user?.id]);
-  function showMobilePane(next: "edit" | "preview") {
-    setMobilePane(next);
-    requestAnimationFrame(() => {
-      if (!window.matchMedia("(max-width: 760px)").matches || !mobileSwitcher.current) return;
-      const navHeight = sidebarRef.current?.getBoundingClientRect().height || 0;
-      const offset = mobileSwitcher.current.getBoundingClientRect().top - navHeight;
-      if (Math.abs(offset) > 2) window.scrollBy({ top: offset, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
-    });
-  }
+  useEffect(() => { if (!isPhone) setSheetOpen(false); }, [isPhone]);
+  useEffect(() => { if (sheetOpen && isPhone) sheetClose.current?.focus(); }, [sheetOpen, isPhone]);
+
   function canDiscard() { return !busy && (!hasUnsavedChanges || window.confirm("Discard your unsaved QR code changes?")); }
-  function change<K extends keyof QRCodeInput>(key: K, value: QRCodeInput[K]) { setForm(old => ({ ...old, [key]: value })); }
-  function design<K extends keyof QRDesign>(key: K, value: QRDesign[K]) { setForm(old => ({ ...old, design: { ...old.design, [key]: value } })); }
-  function utm(key: keyof QRCodeInput["utm"], value: string | boolean) { setForm(old => ({ ...old, utm: { ...old.utm, [key]: value } })); }
-  function navigate(next: View) { if (busy) return; if (view === "create" && next !== "create" && hasUnsavedChanges) { if (!canDiscard()) return; setForm(savedInput); } setView(next); setError(""); if (next === "library") void loadCodes(); }
-  function newCode() { if (!canDiscard()) return; const fresh = initialForm(); setForm(fresh); setSavedInput(fresh); setEditing(null); setTab("content"); setMobilePane("edit"); setView("create"); setError(""); }
-  function editCode(code: QRCodeRecord) {
-    if (code.archivedAt || !canDiscard()) return;
-    const input = editableInput(code);
-    setEditing(code); setForm(input); setSavedInput(input); setTab("content"); setMobilePane("edit"); setView("create"); setError("");
+  function change<K extends keyof QRCodeInput>(key: K, value: QRCodeInput[K]) {
+    setForm(old => ({ ...old, [key]: value }));
+    if (key === "name" || key === "destination") setFieldErrors(old => ({ ...old, [key]: undefined }));
+    setSaveError("");
   }
+  function design<K extends keyof QRDesign>(key: K, value: QRDesign[K]) { setForm(old => ({ ...old, design: { ...old.design, [key]: value } })); setSaveError(""); }
+  function utm(key: keyof QRCodeInput["utm"], value: string | boolean) { setForm(old => ({ ...old, utm: { ...old.utm, [key]: value } })); }
+  function openEditor(input: QRCodeInput, saved: QRCodeInput, record: QRCodeRecord | null) {
+    setEditing(record); setForm(input); setSavedInput(saved); setFieldErrors({}); setSaveError(""); setBulkResult(""); setSheetOpen(false); setView("editor"); setError("");
+    window.scrollTo({ top: 0 });
+  }
+  function navigate(next: View) {
+    if (busy) return;
+    if (view === "editor" && next !== "editor" && hasUnsavedChanges) { if (!canDiscard()) return; setForm(savedInput); }
+    setView(next); setError(""); setSheetOpen(false);
+    if (next === "codes") void loadCodes();
+    window.scrollTo({ top: 0 });
+  }
+  function newCode() { if (!canDiscard()) return; const fresh = initialForm(); openEditor(fresh, fresh, null); }
+  function editCode(code: QRCodeRecord) { if (code.archivedAt || !canDiscard()) return; const input = editableInput(code); openEditor(input, input, code); }
   function duplicateCode(code: QRCodeRecord) {
     if (!canDiscard()) return;
-    const input = editableInput(code);
-    setEditing(null); setForm({ ...input, name: `${code.name} — copy`, status: "active", expiresAt: null }); setSavedInput(initialForm()); setTab("content"); setMobilePane("edit"); setView("create"); setError(""); setToast("Copy ready. Save it to create a new tracking link.");
+    openEditor({ ...editableInput(code), name: `${code.name} — copy`, status: "active", expiresAt: null }, initialForm(), null);
+    setToast({ message: "Copy ready. Save it to create a new tracking link." });
   }
 
-  async function saveCode(): Promise<QRCodeRecord> {
-    if (!form.name.trim()) throw new Error("Give this QR code a name before saving.");
-    let url: URL; try { url = new URL(form.destination); } catch { throw new Error("Enter a complete destination URL, starting with https://."); }
-    if (!["https:", "http:"].includes(url.protocol)) throw new Error("Use an https:// or http:// destination URL.");
-    if (warnings.length) throw new Error(warnings[0]);
-    const result = await api<{ code: QRCodeRecord }>(editing ? `/api/codes/${editing.id}` : "/api/codes", { method: editing ? "PATCH" : "POST", body: JSON.stringify({ ...form, name: form.name.trim(), utm: { ...form.utm, campaign: form.utm.campaign || campaignLabel(form.event), content: form.utm.content || campaignLabel(form.placement) } }) });
-    setEditing(result.code); const input = editableInput(result.code); setForm(input); setSavedInput(input); setCodes(old => [result.code, ...old.filter(c => c.id !== result.code.id)]); return result.code;
+  function validate() {
+    const errors: Partial<Record<FieldName, string>> = {};
+    try { const url = new URL(form.destination); if (!["https:", "http:"].includes(url.protocol)) errors.destination = "Use an https:// or http:// address."; }
+    catch { errors.destination = "Enter a complete address, starting with https://."; }
+    if (!form.name.trim()) errors.name = "Add a name to save this code.";
+    return errors;
   }
   async function saveChanges() {
-    setBusy(true); setError("");
-    try { await saveCode(); setToast("QR code saved."); }
-    catch (e) { setError(e instanceof Error ? e.message : "Could not save your QR code."); }
+    const errors = validate();
+    setFieldErrors(errors);
+    const first = (["destination", "name"] as const).find(key => errors[key]);
+    if (first) {
+      setSheetOpen(false);
+      requestAnimationFrame(() => {
+        const input = document.getElementById(`field-${first}`);
+        input?.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+        input?.focus({ preventScroll: true });
+      });
+      return;
+    }
+    if (warnings.length) { setSaveError(warnings[0]); if (isPhone) setSheetOpen(true); return; }
+    setBusy(true); setSaveError("");
+    try {
+      const result = await api<{ code: QRCodeRecord }>(editing ? `/api/codes/${editing.id}` : "/api/codes", { method: editing ? "PATCH" : "POST", body: JSON.stringify({ ...form, name: form.name.trim(), utm: { ...form.utm, campaign: form.utm.campaign || campaignLabel(form.event), content: form.utm.content || campaignLabel(form.placement) } }) });
+      const input = editableInput(result.code);
+      setEditing(result.code); setForm(input); setSavedInput(input); setCodes(old => [result.code, ...old.filter(code => code.id !== result.code.id)]);
+      setToast({ message: "QR code saved." });
+    } catch (e) { setSaveError(e instanceof Error ? e.message : "Could not save your QR code."); if (isPhone) setSheetOpen(true); }
     finally { setBusy(false); }
   }
+  function primaryAction() { if (readyToDownload && editing) void exportSaved(editing, "png"); else void saveChanges(); }
+  function submit(event: FormEvent) { event.preventDefault(); if (!readyToDownload) void saveChanges(); }
 
   async function exportSaved(code: QRCodeRecord, format: ExportFormat = "png") {
     if (code.archivedAt) return;
-    setBusy(true); setError(""); try { await exportQR(`${origin}/q/${code.slug}`, code.design, { format, size: Number(exportSize), name: code.name }); setToast(`${format.toUpperCase()} downloaded.`); } catch (e) { setError(e instanceof Error ? e.message : "Download failed."); } finally { setBusy(false); }
+    setBusy(true); setError("");
+    try { await exportQR(trackingLink(origin, code.slug), code.design, { format, size: Number(exportSize), name: code.name }); setToast({ message: `${format.toUpperCase()} downloaded.` }); }
+    catch (e) { const message = e instanceof Error ? e.message : "Download failed."; if (view === "editor") setSaveError(message); else setError(message); }
+    finally { setBusy(false); }
   }
-  async function copyLink(code: QRCodeRecord) { try { await navigator.clipboard.writeText(`${origin}/q/${code.slug}`); setToast("Tracking link copied."); } catch { setError("Clipboard access was blocked. Open the code editor and select its tracking link to copy it."); } }
-  async function toggleStatus(code: QRCodeRecord) {
+  async function copyLink(code: QRCodeRecord) {
+    try { await navigator.clipboard.writeText(trackingLink(origin, code.slug)); setToast({ message: "Tracking link copied." }); }
+    catch { setError("Your browser blocked copying. Open the code and select its tracking link to copy it."); }
+  }
+  async function setStatus(code: QRCodeRecord, status: QRCodeInput["status"], offerUndo = true) {
     if (code.archivedAt) return;
     setBusy(true); setError("");
     try {
-      const { code: updated } = await api<{ code: QRCodeRecord }>(`/api/codes/${code.id}`, { method: "PATCH", body: JSON.stringify({ status: code.status === "active" ? "paused" : "active" }) });
-      setCodes(old => old.map(c => c.id === code.id ? updated : c));
-      if (editing?.id === updated.id) {
-        setEditing(updated);
-        setForm(old => ({ ...old, status: updated.status }));
-        setSavedInput(old => ({ ...old, status: updated.status }));
-      }
-      setToast(updated.status === "active" ? "QR code is active." : "QR code paused. Its link will show an unavailable message.");
+      const { code: updated } = await api<{ code: QRCodeRecord }>(`/api/codes/${code.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      setCodes(old => old.map(item => item.id === code.id ? updated : item));
+      if (editing?.id === updated.id) { setEditing(updated); setForm(old => ({ ...old, status: updated.status })); setSavedInput(old => ({ ...old, status: updated.status })); }
+      setToast({
+        message: updated.status === "active" ? "Code is active. Printed copies open the destination." : "Code paused. Printed copies show an unavailable page.",
+        action: offerUndo ? { label: "Undo", run: () => void setStatus(updated, code.status, false) } : undefined,
+      });
     } catch (e) { setError(e instanceof Error ? e.message : "Could not update the code."); }
     finally { setBusy(false); }
   }
@@ -209,7 +181,7 @@ export default function Studio() {
       const { code } = await api<{ code: QRCodeRecord }>(`/api/codes/${archiveTarget.id}`, { method: "DELETE" });
       setCodes(old => old.map(item => item.id === code.id ? code : item));
       if (editing?.id === code.id) { const fresh = initialForm(); setEditing(null); setForm(fresh); setSavedInput(fresh); }
-      setArchiveTarget(null); setToast("QR code archived. Scan and fulfillment history are kept.");
+      setArchiveTarget(null); setToast({ message: "Code archived. Its scans and book requests stay in Results." });
     } catch (e) { setError(e instanceof Error ? e.message : "Could not archive the code."); }
     finally { setBusy(false); }
   }
@@ -218,12 +190,12 @@ export default function Studio() {
     try {
       const { code: restored } = await api<{ code: QRCodeRecord }>(`/api/codes/${code.id}/restore`, { method: "POST", body: "{}" });
       setCodes(old => old.map(item => item.id === restored.id ? restored : item));
-      setToast("QR code restored to Paused. Activate it when you’re ready.");
-      requestAnimationFrame(() => libraryFilter.current?.focus());
+      setToast({ message: "Code restored and paused. Activate it when you’re ready." });
+      requestAnimationFrame(() => codeFilterRef.current?.focus());
     } catch (e) { setError(e instanceof Error ? e.message : "Could not restore the code."); }
     finally { setBusy(false); }
   }
-  function viewCodeAnalytics(code: QRCodeRecord) { setEventFilter(""); setFilterCode(code.id); navigate("analytics"); }
+  function viewResults(code: QRCodeRecord) { setFilters(old => ({ ...old, event: "", codeId: code.id })); navigate("results"); }
   async function signOut() {
     if (!canDiscard()) return;
     setBusy(true); setError("");
@@ -236,160 +208,256 @@ export default function Studio() {
     if (!rows.length || rows.length > 25 || rows.some(row => !row[0] || row.length > 3)) { setBulkResult("Add 1–25 rows in this format: name | event | placement."); return; }
     if (warnings.length) { setBulkResult(warnings[0]); return; }
     setBusy(true); setBulkResult(""); let succeeded = 0; const failed: string[] = [];
-    for (const row of rows) { try { await api("/api/codes", { method: "POST", body: JSON.stringify({ ...form, name: row[0], event: row[1] || form.event, placement: row[2] || form.placement, status: "active", utm: { ...form.utm, campaign: form.utm.campaign || campaignLabel(row[1] || form.event), content: form.utm.content || campaignLabel(row[2] || form.placement) } }) }); succeeded++; } catch (e) { failed.push(`${row.join(" | ")}`); setBulkResult(e instanceof Error ? e.message : "Some rows could not be saved."); } }
-    setBulk(failed.join("\n")); setBulkResult(`${succeeded} code${succeeded === 1 ? "" : "s"} created.${failed.length ? ` ${failed.length} could not be saved; those rows are still here to retry.` : " Each has its own tracking link."}`); await loadCodes(); setBusy(false);
+    for (const row of rows) {
+      try { await api("/api/codes", { method: "POST", body: JSON.stringify({ ...form, name: row[0], event: row[1] || form.event, placement: row[2] || form.placement, status: "active", utm: { ...form.utm, campaign: form.utm.campaign || campaignLabel(row[1] || form.event), content: form.utm.content || campaignLabel(row[2] || form.placement) } }) }); succeeded++; }
+      catch { failed.push(row.join(" | ")); }
+    }
+    setBulk(failed.join("\n")); setBulkResult(`${succeeded} code${succeeded === 1 ? "" : "s"} created.${failed.length ? ` ${failed.length} could not be saved; those rows are still here to retry.` : " Each has its own tracking link."}`);
+    await loadCodes(); setBusy(false);
   }
-  const codeLink = editing ? `${origin}/q/${editing.slug}` : form.destination;
-  const currentCodes = codes.filter(code => !code.archivedAt);
-  const onlyArchived = codes.length > 0 && !currentCodes.length && statusFilter === "all" && !search;
-  const visibleCodes = codes.filter(code => (statusFilter === "archived" ? !!code.archivedAt : !code.archivedAt && (statusFilter === "all" || code.status === statusFilter)) && `${code.name} ${code.event} ${code.book} ${code.placement}`.toLowerCase().includes(search.toLowerCase()));
 
-  if (!session) return <div className="auth-layout"><div className="auth-card"><img src="/mastra-logo.svg" alt="Mastra" width="130" /><h1>QR Studio</h1><p role="status">{sessionError || "Getting your studio ready…"}</p>{sessionError && <button className="btn primary" onClick={() => void refreshSession()}>Try again</button>}</div></div>;
+  if (!session) return <div className="center-page"><img src="/mastra-logo.svg" alt="Mastra" width="120" /><p role="status">{sessionError || "Loading QR Studio…"}</p>{sessionError && <button type="button" className="btn primary" onClick={() => void refreshSession()}>Try again</button>}</div>;
   if (!session.user) return <Auth session={session} onSignedIn={refreshSession} />;
 
-  return <div className="app-shell">
-    <aside className="sidebar" ref={sidebarRef}>
-      <a className="brand" href="#" aria-disabled={busy} tabIndex={busy ? -1 : undefined} onClick={e => { e.preventDefault(); newCode(); }} aria-label="Mastra QR Studio home"><img src="/mastra-logo.svg" alt="Mastra" width="124" /><span>QR STUDIO</span></a>
-      <div className="workspace-label">YOUR WORKSPACE <span>2027</span></div>
-      <nav aria-label="Main navigation">
-        {[{ id: "create", label: "Create a QR code", shortLabel: "Create", icon: "plus" }, { id: "library", label: "Your QR codes", shortLabel: "QR codes", icon: "qr" }, { id: "analytics", label: "Scan analytics", shortLabel: "Analytics", icon: "chart" }].map(item => <button key={item.id} disabled={busy} aria-label={item.label} className={`nav-item ${view === item.id ? "active" : ""}`} onClick={() => navigate(item.id as View)}><Icon name={item.icon} /><span className="nav-label-full">{item.label}</span><span className="nav-label-short" aria-hidden="true">{item.shortLabel}</span>{item.id === "library" && <small>{currentCodes.length}</small>}</button>)}
-      </nav>
-      <div className="sidebar-bottom"><button disabled={busy} className={`nav-item ${view === "guide" ? "active" : ""}`} onClick={() => navigate("guide")}><Icon name="book" /><span>How it works</span><Icon name="chevron" size={14} /></button><div className="sidebar-user"><span className="avatar">M</span><div><strong>Mastra workspace</strong><small>{session.mode === "local" ? "Local preview" : session.user.email}</small></div>{session.mode === "supabase" && <button aria-label="Sign out" title="Sign out" className="button-link" disabled={busy} onClick={() => void signOut()}><Icon name="logout" size={17} /></button>}</div></div>
-    </aside>
-    <div className="main-wrap"><header className="topbar"><div className="breadcrumb"><span>Workspace</span><Icon name="chevron" size={13} /><strong>{{ create: "Create a QR code", library: "Your QR codes", analytics: "Scan analytics", guide: "How it works" }[view]}</strong></div><div className="topbar-status"><span className="status-dot" /> {session.mode === "local" ? "Local preview" : "Your private studio"}<button disabled={busy} className="topbar-help" aria-label="How tracking works" onClick={() => navigate("guide")}><Icon name="book" size={15} /></button>{session.mode === "supabase" && <button className="mobile-signout" aria-label="Sign out" disabled={busy} onClick={() => void signOut()}><Icon name="logout" size={15} /></button>}<span className="avatar">M</span></div></header>
-    <main className="main">
-      {error && !archiveTarget && <div className="alert" role="alert">{error}<button className="button-link" aria-label="Dismiss error" onClick={() => setError("")}><Icon name="close" size={16} /></button></div>}
-      {view === "create" && <>
-        <div className="page-heading"><div><h1>{editing ? "Edit QR code" : "Create a QR code"}</h1><p>Customize a code for your book, event, or campaign.</p></div>{editing && <button className="btn secondary" disabled={busy} onClick={newCode}><Icon name="plus" size={16} />New code</button>}</div>
-        {session.booksPreviewOrigin && isBooksHome(form.destination) && <p className="books-preview-note">Saved Books QR links open the private test portal in this preview. No books or emails are sent.</p>}
-        <div className="mobile-editor-switch" ref={mobileSwitcher} role="group" aria-label="Editor view">
-          <button type="button" aria-pressed={mobilePane === "edit"} aria-controls="editor-details-pane" className={mobilePane === "edit" ? "active" : ""} onClick={() => showMobilePane("edit")}><Icon name="edit" size={16} />Edit</button>
-          <button type="button" aria-pressed={mobilePane === "preview"} aria-controls="editor-preview-pane" className={mobilePane === "preview" ? "active" : ""} onClick={() => showMobilePane("preview")}><Icon name="qr" size={16} />Preview</button>
-        </div>
-        <div className={`editor-layout mobile-pane-${mobilePane}`}><section className="editor-panel" id="editor-details-pane" aria-label="QR code editor">
-          <div className="editor-tabs" role="tablist" aria-label="QR code settings">{(["content", "design", "tracking"] as Tab[]).map((item, i) => <button key={item} role="tab" id={`tab-${item}`} aria-selected={tab === item} aria-controls={`panel-${item}`} className={tab === item ? "active" : ""} onClick={() => setTab(item)} tabIndex={tab === item ? 0 : -1} onKeyDown={event => { const tabs: Tab[] = ["content", "design", "tracking"]; const next = event.key === "ArrowRight" ? tabs[(i + 1) % 3] : event.key === "ArrowLeft" ? tabs[(i + 2) % 3] : event.key === "Home" ? tabs[0] : event.key === "End" ? tabs[2] : null; if (next) { event.preventDefault(); setTab(next); document.getElementById(`tab-${next}`)?.focus(); } }}>{item[0].toUpperCase() + item.slice(1)}{tab === item && <span className="tab-line" />}</button>)}</div>
-          <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}><fieldset className="editor-body editor-fields" disabled={busy} aria-label="Edit QR code details" aria-busy={busy}>
-          {tab === "content" && <>
-            <div className="section-title"><span className="icon-box"><Icon name="link" /></span><div><h2>Destination and details</h2><p>Choose the link people open when they scan.</p></div></div>
-            <Field label="Destination URL" hint="The page a scan opens. You can update it later without reprinting."><div className="input-icon"><Icon name="link" size={17} /><input type="url" required value={form.destination} onChange={e => change("destination", e.target.value)} placeholder="https://www.mastrabooks.dev" autoComplete="url" /></div></Field>
-            <Field label="QR code name" hint="A name that makes this code easy to find later."><input required value={form.name} onChange={e => change("name", e.target.value)} placeholder="e.g. AI Engineer Summit · book table" maxLength={120} /></Field>
-            <div className="divider" /><div className="section-caption"><span>MAKE IT EASY TO ORGANIZE</span><span>Optional</span></div>
-            <div className="field-grid"><Field label="Event or campaign"><input value={form.event} onChange={e => change("event", e.target.value)} placeholder="e.g. AI Engineer Summit 2027" maxLength={120} /></Field><Field label="Placement"><input value={form.placement} onChange={e => change("placement", e.target.value)} placeholder="e.g. Booth, book insert, slide" maxLength={120} /></Field></div>
-            <Field label="Book label" hint="For your reports only. Does not change the book selected on the fulfillment site."><select value={form.book} onChange={e => change("book", e.target.value)}>{books.map(book => <option key={book}>{book}</option>)}</select></Field>
+  const previewValue = editing ? trackingLink(origin, editing.slug) : draftLink(origin || "https://qr.mastra.ai");
+  const previewNote = session.mode === "private" ? `Private preview: scanners need preview access${session.booksPreviewOrigin && isBooksHome(form.destination) ? ", and Books links open the test form" : ""}. Don’t print for events yet.`
+    : session.mode === "local" ? "Local preview: these links only open on this computer." : undefined;
+  const stickerNote = session.mode === "private" ? "Private preview: test prints only. Attendees can’t open these links until there’s a public scan domain."
+    : session.mode === "local" ? "Local preview: test prints only. These links only open on this computer." : undefined;
+  const stateText = readyToDownload ? (form.status === "paused" ? "Saved · paused" : "Saved") : editing ? "Unsaved changes" : "Not saved";
+  const primaryLabel = busy ? processingLogo ? "Adding logo…" : readyToDownload ? "Downloading…" : "Saving…" : readyToDownload ? "Download PNG" : editing ? "Save changes" : "Save code";
+  const title = editing ? form.name.trim() || "Untitled code" : "New code";
+  const fieldProps = (name: FieldName, hint?: string) => ({ id: `field-${name}`, "aria-invalid": fieldErrors[name] ? true : undefined, "aria-describedby": describedBy(`field-${name}`, hint, fieldErrors[name]) });
+  const destinationHint = "Change it any time. Printed codes follow, and the tracking link stays the same.";
 
-            <div className="form-actions"><button className="btn secondary" onClick={() => setTab("design")}>Customize design <Icon name="arrow" size={16} /></button></div>
-          </>}
-          {tab === "design" && <>
-            <div className="section-title"><span className="icon-box"><Icon name="palette" /></span><div><h2>Customize the design</h2><p>Start with a preset, then add your logo.</p></div></div>
-            <fieldset className="preset-choices"><legend>Style presets</legend><div className="preset-row">{DESIGN_PRESETS.map(preset => <button key={preset.id} aria-label={preset.name} title={preset.description} aria-pressed={JSON.stringify(form.design) === JSON.stringify(preset.design)} className={`preset-mini ${JSON.stringify(form.design) === JSON.stringify(preset.design) ? "selected" : ""}`} onClick={() => change("design", { ...preset.design })}><span style={{ background: preset.design.background }}><QRPreview value="https://www.mastrabooks.dev" design={preset.design} size={48} /></span>{preset.name}</button>)}</div></fieldset>
-            <div className="divider" /><Field label="Center logo"><div className="segmented">{([{ id: "mastra", text: "Mastra" }, { id: "none", text: "No logo" }, { id: "upload", text: "Your logo" }] as const).map(item => <button key={item.id} aria-pressed={form.design.logo === item.id} className={form.design.logo === item.id ? "active" : ""} onClick={() => design("logo", item.id)}>{item.text}</button>)}</div></Field>
-            {form.design.logo === "upload" && <Field label="Upload your logo" hint="PNG, JPG, or WebP · up to 2 MB"><input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp" onChange={async e => { const file = e.target.files?.[0]; if (!file) return; setBusy(true); setProcessingLogo(true); setError(""); try { const data = await normalizeLogo(file); design("logoData", data); setToast("Logo added."); } catch (err) { setError(err instanceof Error ? err.message : "Could not read the logo."); } finally { setBusy(false); setProcessingLogo(false); } }} />{form.design.logoData && <img src={form.design.logoData} alt="Uploaded logo" width="48" height="48" style={{ objectFit: "contain" }} />}</Field>}
-            <Field label="Code color"><div className="color-field"><input type="color" aria-label="Code color" value={form.design.foreground} onChange={e => design("foreground", e.target.value)} /><span>{form.design.foreground.toUpperCase()}</span></div></Field>
-            <details className="advanced-settings"><summary>Advanced design<Icon name="chevron" size={16} /></summary><div className="advanced-body">
-            {form.design.logo !== "none" && <Field label={`Logo size · ${Math.round(form.design.logoSize * 100)}%`} hint="Kept small to protect scan reliability."><input type="range" min="12" max="22" value={Math.round(form.design.logoSize * 100)} onChange={e => design("logoSize", Number(e.target.value) / 100)} /></Field>}
-            <div className="field-grid">{([{ key: "background", label: "Background" }, { key: "eyeColor", label: "Corner color" }] as const).map(item => <Field key={item.key} label={item.label}><div className="color-field"><input type="color" aria-label={item.label} value={form.design[item.key]} onChange={e => design(item.key, e.target.value)} /><span>{form.design[item.key].toUpperCase()}</span></div></Field>)}<Field label="Color style"><select value={form.design.gradient} onChange={e => design("gradient", e.target.value as QRDesign["gradient"])}><option value="none">Solid color</option><option value="linear">Linear gradient</option><option value="radial">Radial gradient</option></select></Field></div>
-            {form.design.gradient !== "none" && <div className="field-grid"><Field label="Gradient end color"><div className="color-field"><input type="color" value={form.design.gradientColor} onChange={e => design("gradientColor", e.target.value)} /><span>{form.design.gradientColor.toUpperCase()}</span></div></Field><Field label={`Gradient angle · ${form.design.gradientRotation}°`}><input type="range" min="0" max="360" value={form.design.gradientRotation} onChange={e => design("gradientRotation", Number(e.target.value))} /></Field></div>}
-            <Field label="Dot style"><div className="segmented dot-options">{(["square", "rounded", "dots", "classy"] as const).map(shape => <button key={shape} aria-pressed={form.design.dots === shape} className={form.design.dots === shape ? "active" : ""} onClick={() => design("dots", shape)}><span className={`pattern ${shape}`} aria-hidden="true">{Array.from({ length: 9 }, (_, index) => <i key={index} />)}</span>{shape[0].toUpperCase() + shape.slice(1)}</button>)}</div></Field>
-            <div className="field-grid"><Field label="Corner frame"><select value={form.design.corners} onChange={e => design("corners", e.target.value as QRDesign["corners"])}><option value="rounded">Rounded</option><option value="square">Square</option><option value="dot">Circle</option></select></Field><Field label="Corner center"><select value={form.design.eyes} onChange={e => design("eyes", e.target.value as QRDesign["eyes"])}><option value="square">Square</option><option value="rounded">Rounded</option><option value="dot">Circle</option></select></Field></div>
-            <div className="field-grid"><Field label="Print frame"><select value={form.design.frame} onChange={e => design("frame", e.target.value as QRDesign["frame"])}><option value="none">No frame</option><option value="bottom">Outline with caption</option><option value="banner">Filled frame with caption</option></select></Field>{form.design.frame !== "none" && <Field label="Frame color"><div className="color-field"><input type="color" value={form.design.frameColor} onChange={e => design("frameColor", e.target.value)} /><span>{form.design.frameColor.toUpperCase()}</span></div></Field>}</div>
-            {form.design.frame !== "none" && <Field label="Frame caption"><input value={form.design.caption} onChange={e => design("caption", e.target.value)} maxLength={80} /></Field>}
-            </div></details>
-            <div className="form-actions"><button className="btn secondary" onClick={() => setTab("tracking")}>Set up tracking <Icon name="arrow" size={16} /></button></div>
-          </>}
-          {tab === "tracking" && <>
-            <div className="section-title"><span className="icon-box"><Icon name="chart" /></span><div><h2>Tracking settings</h2><p>Assign campaign tags and manage availability.</p></div></div>
-            <div className="toggle-row"><div><strong>Campaign parameters</strong><p>Pass attribution to your fulfillment site's analytics.</p></div><button className={`toggle ${form.utm.enabled ? "on" : ""}`} role="switch" aria-checked={form.utm.enabled} aria-label="Campaign parameters" onClick={() => utm("enabled", !form.utm.enabled)}><span /></button></div>
-            {form.utm.enabled && <details className="advanced-settings"><summary>Customize campaign tags<Icon name="chevron" size={16} /></summary><div className="advanced-body"><p className="field-help">Campaign and content default to your event and placement.</p><div className="field-grid"><Field label="Source"><input value={form.utm.source} maxLength={160} onChange={e => utm("source", e.target.value)} placeholder="event" /></Field><Field label="Medium"><input value={form.utm.medium} maxLength={160} onChange={e => utm("medium", e.target.value)} placeholder="qr" /></Field><Field label="Campaign"><input value={form.utm.campaign} maxLength={160} onChange={e => utm("campaign", e.target.value)} placeholder={campaignLabel(form.event) || "ai-engineer-2027"} /></Field><Field label="Content"><input value={form.utm.content} maxLength={160} onChange={e => utm("content", e.target.value)} placeholder={campaignLabel(form.placement) || "book-table"} /></Field></div></div></details>}
-            <div className="divider" /><div className="field-grid"><Field label="Code status"><select value={form.status} onChange={e => change("status", e.target.value as QRCodeInput["status"])}><option value="active">Active</option><option value="paused">Paused</option></select></Field><Field label="Expiration date" hint="Optional. Expires at the end of this date, UTC."><input type="date" value={form.expiresAt?.slice(0, 10) || ""} onChange={e => change("expiresAt", e.target.value ? `${e.target.value}T23:59:59.999Z` : null)} /></Field></div>
-            <div className="soft-callout"><Icon name="pin" /><div><strong>Location is approximate. Attribution is yours.</strong><p>Scans record time, device type, and approximate city/country when available. We don’t store IP addresses or request GPS. Use a different code per event for dependable event attribution.</p></div></div>
-            <p className="field-help">Counts include visits to the tracking link. They aren't unique people or confirmed book orders. Campaign parameters need analytics on the destination site to report fulfillment conversions.</p>
-            <button className="button-link" onClick={() => setBulkOpen(!bulkOpen)}><Icon name="plus" size={16} />{bulkOpen ? "Close bulk creation" : "Create multiple codes with this design"}</button>
-            {bulkOpen && <div className="bulk-panel"><Field label="One code per line" hint="name | event | placement · up to 25 codes. Uses this destination, book and design. Empty campaign/content tags follow each row’s event/placement."><textarea rows={5} value={bulk} onChange={e => setBulk(e.target.value)} placeholder={"SF book table | AI Engineer 2027 | Booth\nNYC book insert | NYC meetup | Book insert"} /></Field><button className="btn secondary" disabled={busy} onClick={() => void createBulk()}>{busy ? "Creating…" : "Create codes"}</button>{bulkResult && <p role="status">{bulkResult}</p>}</div>}
-          </>}
-          </fieldset></div>
-        </section>
-        <aside className="preview-column" id="editor-preview-pane"><section className="preview-panel"><div className="preview-label"><span>LIVE PREVIEW</span><span className="status-pill">{editing ? hasUnsavedChanges ? "Unsaved changes" : "Saved QR code" : "Draft"}</span></div><div className="qr-stage"><QRPreview value={codeLink || "https://www.mastrabooks.dev"} design={form.design} size={254} /></div><div className="preview-meta"><h3>{form.name || "Untitled QR code"}</h3><p>{form.book}</p></div>{editing && <div className="preview-link"><input readOnly aria-label="Tracking link" value={`${origin}/q/${editing.slug}`} onFocus={e => e.target.select()} /><button className="button-link" title="Copy tracking link" aria-label="Copy tracking link" onClick={() => void copyLink(editing)}><Icon name="copy" size={16} /></button></div>}{warnings.map(message => <p className="alert" role="alert" key={message}>{message}</p>)}<div className="preview-warning"><Icon name="shield" size={16} /><div><strong>Preview only — don’t print for events</strong><p>{session.mode === "local" ? "These codes open on this computer. Publish to a stable address before sharing." : "Scans require preview access. Public event scanning is not enabled yet."}</p></div></div><button className="btn primary full" disabled={busy} onClick={() => readyToDownload && editing ? void exportSaved(editing, "png") : void saveChanges()}><Icon name={readyToDownload ? "download" : "qr"} size={18} />{busy ? processingLogo ? "Adding logo…" : readyToDownload ? "Downloading…" : "Saving…" : readyToDownload ? "Download PNG" : editing ? "Save changes" : "Save QR code"}{!readyToDownload && <Icon name="arrow" size={17} />}</button><div className="download-row">{(["svg", "pdf"] as ExportFormat[]).map(format => <button key={format} className="btn secondary" disabled={busy || !editing || hasUnsavedChanges} title={!editing ? "Save the code before downloading" : hasUnsavedChanges ? "Save your changes before downloading" : `Download saved ${format.toUpperCase()}`} onClick={() => editing && !hasUnsavedChanges && void exportSaved(editing, format)}><Icon name="download" size={14} />{format.toUpperCase()}</button>)}</div><div className="export-origin"><span>Scan domain</span><code>{origin.replace(/^https?:\/\//, "") || "Loading…"}</code></div><label className="export-size">Export size <select disabled={busy} value={exportSize} onChange={e => setExportSize(e.target.value)}><option value="1024">1,024 px</option><option value="2048">2,048 px</option><option value="4096">4,096 px</option></select></label><p className="preview-tip">{!editing ? "Save this code to enable downloads." : hasUnsavedChanges ? "Save your changes before downloading." : "Downloads use your saved design and tracking link."}</p></section></aside></div>
-      </>}
-      {view === "library" && <>
-        <div className="page-heading"><div><h1>Your QR codes</h1><p>Manage destinations, campaigns, and scan activity.</p></div><button className="btn primary" disabled={busy} onClick={newCode}><Icon name="plus" size={17} />Create QR code</button></div>
-        <div className="library-toolbar">
-          <div className="input-icon"><Icon name="search" size={18} /><input aria-label="Search QR codes" placeholder="Search by name, event, or book…" value={search} onChange={e => setSearch(e.target.value)} /></div>
-          <select ref={libraryFilter} aria-label="Filter QR code status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">Current codes</option><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select>
-          <button className="btn secondary" disabled={!visibleCodes.length} onClick={() => downloadCSV("mastra-qr-codes.csv", [["Name", "Event", "Book", "Placement", "Status", "Scans", "Tracking link", "Destination"], ...visibleCodes.map(c => [c.name, c.event, c.book, c.placement, c.archivedAt ? "Archived" : c.status, c.scans, `${origin}/q/${c.slug}`, c.destination])])}><Icon name="download" size={16} />Export CSV</button>
+  return <div className="app">
+    <header className="topbar">
+      <div className="topbar-inner">
+        <button type="button" className="brand" aria-label="QR Studio codes" disabled={busy} onClick={() => navigate("codes")}><img src="/mastra-logo.svg" alt="" /><span>QR Studio</span></button>
+        <nav aria-label="Main">
+          <button type="button" aria-current={view !== "results" ? "page" : undefined} disabled={busy} onClick={() => navigate("codes")}>Codes</button>
+          <button type="button" aria-current={view === "results" ? "page" : undefined} disabled={busy} onClick={() => navigate("results")}>Results</button>
+        </nav>
+        <div className="topbar-end">
+          {session.mode === "supabase" ? <><span className="account">{session.user.email}</span><button type="button" className="btn ghost small" disabled={busy} onClick={() => void signOut()}>Sign out</button></>
+            : <span className="mode-chip"><span className="dot" aria-hidden="true" /><span className="mode-long">{session.mode === "local" ? "Local preview" : "Private preview"}</span><span className="mode-short">Preview</span></span>}
         </div>
-        {statusFilter === "archived" && <p className="library-archive-note">Archived codes keep their scan and fulfillment history. Restore a code to Paused before activating it.</p>}
-        {loadingCodes ? <div className="empty-state" role="status">Loading your QR codes…</div> : !visibleCodes.length ?
-          <div className="empty-state">
-            <span className="icon-box"><Icon name="qr" size={30} /></span>
-            <h2>{onlyArchived ? "No current QR codes." : codes.length ? "No matching codes." : "No QR codes yet."}</h2>
-            <p>{onlyArchived ? "Your archived codes and their history are still available." : codes.length ? "Try another search or status filter." : "Create your first QR code. Give it a book, an event, and a destination."}</p>
-            <button className="btn primary" disabled={busy} onClick={onlyArchived ? () => setStatusFilter("archived") : codes.length ? () => { setSearch(""); setStatusFilter("all"); } : newCode}>{onlyArchived ? "View archived codes" : codes.length ? "Clear filters" : "Create your first code"}<Icon name="arrow" size={16} /></button>
-          </div> :
-          <div className="library-table">
-            <div className="table-head"><span>QR CODE</span><span>CAMPAIGN</span><span>SCANS</span><span>STATUS & ACTIONS</span></div>
-            {visibleCodes.map(code => <div className="code-row" key={code.id}>
-              <div className="code-main"><QRPreview value={`${origin}/q/${code.slug}`} design={code.design} size={62} /><div>
-                {code.archivedAt ? <strong>{code.name}</strong> : <button className="button-link" disabled={busy} onClick={() => editCode(code)}><strong>{code.name}</strong></button>}
-                <small>{code.book}</small><small>{code.archivedAt ? `Archived ${fmtDate(code.archivedAt)}` : `Created ${fmtDate(code.createdAt)}`}</small>
-              </div></div>
-              <div className="code-campaign"><strong>{code.event || "No event"}</strong><small>{code.placement || "No placement"}</small></div>
-              <strong className="scan-count">{code.scans.toLocaleString()}</strong>
-              <div className="row-actions">
-                <span className={`status-pill ${code.archivedAt ? "archived" : code.status}`}>{code.archivedAt ? "Archived" : code.expiresAt && new Date(code.expiresAt).getTime() < Date.now() ? "Expired" : code.status}</span>
-                {code.archivedAt ? <div className="archived-code-actions">
-                  <button className="button-link" aria-label={`Restore ${code.name}`} disabled={busy} onClick={() => void restoreCode(code)}>Restore</button>
-                  <button className="button-link" aria-label={`View analytics for ${code.name}`} disabled={busy} onClick={() => viewCodeAnalytics(code)}>View analytics</button>
-                </div> : <div>
-                  <button className="button-link" aria-label={`Edit ${code.name}`} title="Edit" disabled={busy} onClick={() => editCode(code)}><Icon name="edit" size={16} /></button>
-                  <button className="button-link" aria-label={`Copy link for ${code.name}`} title="Copy link" disabled={busy} onClick={() => void copyLink(code)}><Icon name="copy" size={16} /></button>
-                  <button className="button-link" disabled={busy} aria-label={`Download ${code.name} as PNG`} title="Download PNG" onClick={() => void exportSaved(code)}><Icon name="download" size={16} /></button>
-                  <select aria-label={`More actions for ${code.name}`} value="" disabled={busy} onChange={e => { if (e.target.value === "duplicate") duplicateCode(code); if (e.target.value === "pause") void toggleStatus(code); if (e.target.value === "analytics") viewCodeAnalytics(code); if (e.target.value === "archive") { setError(""); setArchiveTarget(code); } }}><option value="">More</option><option value="duplicate">Duplicate</option><option value="pause">{code.status === "active" ? "Pause" : "Activate"}</option><option value="analytics">View analytics</option><option value="archive">Archive</option></select>
-                </div>}
-              </div>
-            </div>)}
-          </div>}
+      </div>
+    </header>
 
-      </>}
-      {view === "analytics" && <>
-        <div className="page-heading"><div><div className="analytics-title"><h1>Scan analytics</h1><button className="btn secondary" aria-label="Refresh analytics" disabled={analyticsLoading || fulfillmentLoading} onClick={() => setAnalyticsRefresh(value => value + 1)}>{analyticsLoading || fulfillmentLoading ? "Refreshing…" : "Refresh"}</button></div><p>Compare QR visits and the book requests they lead to.</p></div><div className="heading-actions"><label><span>Event</span><select aria-label="Filter analytics by event" value={eventFilter} onChange={e => { setEventFilter(e.target.value); setFilterCode(""); }}><option value="">All events</option>{[...new Set([...codes.map(c => c.event), ...fulfillmentCampaigns.map(c => c.event), eventFilter].filter(Boolean))].sort().map(event => <option key={event}>{event}</option>)}</select></label><label><span>Period</span><select aria-label="Analytics period" value={days} onChange={e => setDays(e.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 365 days</option></select></label><label><span>QR code</span><select aria-label="Filter analytics by QR code" value={filterCode} onChange={e => setFilterCode(e.target.value)}><option value="">All QR codes</option>{codes.filter(code => !eventFilter || code.event === eventFilter || fulfillmentCampaigns.some(campaign => campaign.codeId === code.id && campaign.event === eventFilter)).map(code => <option key={code.id} value={code.id}>{codeLabel(code)}</option>)}</select></label></div></div>
-        {eventFilter && !codes.some(code => code.event === eventFilter) && fulfillmentCampaigns.some(campaign => campaign.event === eventFilter) && <p className="analytics-history-note">Fulfillment keeps the event label from submission. Scan reports use the code’s current label.</p>}
-        {analyticsError && <div className="alert" role="alert">{analyticsError}</div>}{analyticsLoading && !analyticsMatchesFilters && <div className="empty-state" role="status">Gathering your scans…</div>}{analyticsMatchesFilters && analytics && <>
-          <div className="stats-grid">{[{ label: "Total scans", value: analytics.totalScans, icon: "qr", note: "Visits to your tracking links" }, { label: "Active QR codes", value: analytics.activeCodes, icon: "link", note: "Available tracking links" }, { label: "Countries reached", value: analytics.countries, icon: "globe", note: "Approximate visitor location" }].map(stat => <div className="stat-card" key={stat.label}><div><span>{stat.label}</span><Icon name={stat.icon} size={19} /></div><strong>{stat.value.toLocaleString()}</strong><small>{stat.note}</small></div>)}</div>
-          <section className="chart-card"><div className="card-heading"><div><h2>Scans over time</h2><p>Daily visits to your tracking links.</p></div><span className="status-pill">Daily · UTC</span></div><ScanChart days={analytics.byDay} /><div className="chart-labels"><span>{analytics.byDay[0]?.date}</span><span>{analytics.byDay.at(-1)?.date}</span></div><details className="daily-counts"><summary>View daily counts</summary><div className="recent-table"><table><thead><tr><th>Date (UTC)</th><th>Scans</th></tr></thead><tbody>{analytics.byDay.map(day => <tr key={day.date}><td>{day.date}</td><td>{day.scans.toLocaleString()}</td></tr>)}</tbody></table></div></details></section>
-          <div className="guide-grid campaign-breakdown"><Breakdown title="Scans by event" rows={analytics.byEvent} /><Breakdown title="Scans by book" rows={analytics.byBook} /><Breakdown title="Scans by code" rows={analytics.byCode.map(c => ({name:codes.find(code => code.id === c.id)?.archivedAt ? `${c.name} (archived)` : c.name,scans:c.scans}))} /></div>
-        </>}
-        <FulfillmentSummary query={analyticsQuery} refresh={analyticsRefresh} revision={codes.map(code => `${code.id}:${code.updatedAt}`).join("|")} codes={codes} onLoadingChange={setFulfillmentLoading} onCampaignsLoaded={setFulfillmentCampaigns} />
-        {analyticsMatchesFilters && analytics && <>
-          <div className="secondary-analytics" data-selected={mobileBreakdown}>
-            <label className="breakdown-selector" htmlFor="scan-breakdown-select">Break down scans by<select id="scan-breakdown-select" aria-controls="scan-breakdowns" value={mobileBreakdown} onChange={e => setMobileBreakdown(e.target.value as typeof mobileBreakdown)}><option value="country">Country</option><option value="city">City</option><option value="device">Device</option></select></label>
-            <div className="guide-grid" id="scan-breakdowns">
-              <div data-breakdown="country"><Breakdown title="Top countries" rows={analytics.byCountry} /></div>
-              <div data-breakdown="city"><Breakdown title="Top cities" rows={analytics.byCity} /></div>
-              <div data-breakdown="device"><Breakdown title="Devices" rows={analytics.byDevice} /></div>
-            </div>
+    <main className={`main view-${view}`}>
+      {error && !archiveTarget && <div className="page-alert" role="alert"><span>{error}</span><button type="button" className="icon-button" aria-label="Dismiss error" onClick={() => setError("")}><Icon name="close" /></button></div>}
+
+      {view === "codes" && <CodesList codes={codes} origin={origin} loading={loadingCodes} busy={busy} search={search} onSearch={setSearch} filter={codeFilter} onFilter={setCodeFilter} onNew={newCode} filterRef={codeFilterRef}
+        actions={{ edit: editCode, duplicate: duplicateCode, toggleStatus: code => void setStatus(code, code.status === "active" ? "paused" : "active"), archive: code => { setError(""); setArchiveTarget(code); }, restore: code => void restoreCode(code), results: viewResults, copy: code => void copyLink(code), download: code => void exportSaved(code), stickers: setStickerTarget }} />}
+
+      {view === "results" && <Results codes={codes} filters={filters} onFilters={setFilters} historical={historical} onHistorical={setHistorical} />}
+
+      {view === "editor" && <div className="page editor">
+        <div className="editor-head">
+          <button type="button" className="back-link" disabled={busy} onClick={() => navigate("codes")}><Icon name="back" />Codes</button>
+          <div className="editor-title">
+            <h1>{title}</h1>
+            {editing && <div className="status-control"><label htmlFor="field-status" className="sr-only">Code status</label>
+              <select id="field-status" value={form.status} disabled={busy} onChange={event => change("status", event.target.value as QRCodeInput["status"])}><option value="active">Active</option><option value="paused">Paused</option></select></div>}
           </div>
-          <section className="chart-card"><div className="card-heading"><div><h2>Recent scans</h2><p>Latest recorded visits. Location may be unavailable.</p></div><button className="btn secondary" disabled={!analytics.recent.length} onClick={() => downloadCSV("mastra-recent-scans.csv", [["Timestamp", "QR code", "Country", "Region", "City", "Device"], ...analytics.recent.map(s => [s.scannedAt, s.codeName, s.country, s.region, s.city, s.device])])}><Icon name="download" size={16} />Export recent</button></div>{analytics.recent.length ? <><div className="recent-table recent-scans-table"><table><thead><tr><th>QR code</th><th>When</th><th>Location</th><th>Device</th></tr></thead><tbody>{analytics.recent.map(scan => <tr key={scan.id}><td>{scan.codeName}</td><td>{new Date(scan.scannedAt).toLocaleString()}</td><td>{[scan.city, scan.country].filter(v => v && v !== "Unknown").join(", ") || "Unknown"}</td><td>{scan.device}</td></tr>)}</tbody></table></div>
-            <ul className="mobile-scan-list" aria-label="Recent scan details">{analytics.recent.map(scan => <li key={scan.id}><strong>{scan.codeName}</strong><dl><div><dt>When</dt><dd><time dateTime={scan.scannedAt}>{new Date(scan.scannedAt).toLocaleString()}</time></dd></div><div><dt>Location</dt><dd>{[scan.city, scan.country].filter(v => v && v !== "Unknown").join(", ") || "Unknown"}</dd></div><div><dt>Device</dt><dd>{scan.device}</dd></div></dl></li>)}</ul>
-          </> : <div className="empty-state compact"><Icon name="qr" size={28} /><h3>No scans yet</h3><p>Once a saved QR code is opened, real activity will appear here.</p></div>}</section><p className="field-help">Scans are link visits, not unique people or fulfilled orders. Automated requests may be included. Locations are approximate; VPNs and mobile networks can affect them.</p>
-        </>}
-      </>}
-      {view === "guide" && <><div className="page-heading"><div><h1>How QR tracking works</h1><p>Create, test, and manage your event codes.</p></div></div><div className="guide-grid">{[{ icon: "qr", title: "1. Create a code per event", text: "Use a separate code for each event, book, or placement. The event label tells you which campaign drove the visit, even if someone scans after returning home." }, { icon: "palette", title: "2. Customize and test", text: "Choose colors, a logo, and a frame. Download an SVG for sharp print artwork, or PNG/PDF to share. Test the final printed size on more than one phone before producing a full batch." }, { icon: "chart", title: "3. Review scan activity", text: "A saved code opens a stable tracking link, records a visit, and redirects to your destination. Change the destination later without changing the printed code." }].map(item => <article className="guide-card" key={item.title}><span className="icon-box"><Icon name={item.icon} size={25} /></span><h2>{item.title}</h2><p>{item.text}</p></article>)}</div><div className="chart-card guide-copy"><h2>What location tracking can tell you</h2><p>Available network information gives an approximate country, region, and city. It isn't GPS and cannot prove a person scanned at a specific booth. No raw IP address is stored. Use a unique event code for reliable campaign attribution.</p><h2>Before your first event</h2><p>This studio must be hosted at a stable, publicly accessible address so guests can open QR links. A private preview requires access and isn't ready for anonymous event visitors. Test a saved code from a signed-out phone on mobile data before printing.</p><h2>What about codes you've already printed?</h2><p>A static QR code always contains the same URL. You can only add tracking to an existing print if you control that URL and can update its behavior. New dynamic codes created here use their own permanent tracking links.</p><h2>Scans and book orders are different</h2><p>Scan counts measure visits to the tracking link. A shared link, a repeat visitor, or an automated preview can add a visit. When connected, Books reporting connects a saved request to the QR visit that led to it. Requests, book quantities, shipments, and confirmed deliveries are counted separately. Private preview fulfillment is simulated; no books or emails are sent.</p></div></>}
-      <footer className="footer"><span>Mastra books and events</span><span>MASTRA QR STUDIO <span>·</span> 2027</span></footer>
-    </main></div>
-    {toast && <div className="toast" role="status"><Icon name="check" size={18} />{toast}<button className="button-link" aria-label="Dismiss notification" onClick={() => setToast("")}><Icon name="close" size={16} /></button></div>}
-    {archiveTarget && <div className="modal-overlay" onClick={() => !busy && setArchiveTarget(null)}><div className="modal" ref={archiveDialog} onKeyDown={event => { if (event.key === "Escape" && !busy) setArchiveTarget(null); if (event.key === "Tab") { const buttons = archiveDialog.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"); if (buttons?.length) { const first = buttons[0]; const last = buttons[buttons.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } } }} role="alertdialog" aria-modal="true" aria-labelledby="archive-heading" aria-describedby="archive-description" onClick={e => e.stopPropagation()}>
-      <h2 id="archive-heading">Archive this QR code?</h2>
-      <p id="archive-description">Printed copies of “{archiveTarget.name}” will stop opening the destination. Its scan and fulfillment history will stay in your reports. You can restore the code later.</p>
-      {error && <p className="alert" role="alert">{error}</p>}
-      <div className="form-actions"><button className="btn secondary" disabled={busy} onClick={() => setArchiveTarget(null)}>Keep code</button><button className="btn danger" disabled={busy} onClick={() => void archiveCode()}>{busy ? "Archiving…" : "Archive code"}</button></div>
-    </div></div>}
+        </div>
 
+        <div className="editor-grid">
+          <form className="editor-form" onSubmit={submit} noValidate>
+            <fieldset className="editor-fields" disabled={busy} aria-busy={busy}>
+              <section className="form-section" aria-labelledby="link-heading">
+                <h2 id="link-heading">Link</h2>
+                <Field id="field-destination" label="Destination URL" hint={destinationHint} error={fieldErrors.destination}>
+                  <input {...fieldProps("destination", destinationHint)} type="url" inputMode="url" autoComplete="url" value={form.destination} onChange={event => change("destination", event.target.value)} placeholder="https://www.mastrabooks.dev" />
+                </Field>
+                <Field id="field-name" label="Name" error={fieldErrors.name}>
+                  <input {...fieldProps("name")} value={form.name} maxLength={120} onChange={event => change("name", event.target.value)} placeholder="e.g. Booth table — main hall" />
+                </Field>
+                <div className="grid-3">
+                  <Field id="field-event" label="Event"><input id="field-event" value={form.event} maxLength={120} onChange={event => change("event", event.target.value)} placeholder="e.g. Northwind AI Summit 2027" /></Field>
+                  <Field id="field-placement" label="Placement"><input id="field-placement" value={form.placement} maxLength={120} onChange={event => change("placement", event.target.value)} placeholder="e.g. Booth table" /></Field>
+                  <Field id="field-book" label="Book label"><select id="field-book" value={form.book} onChange={event => change("book", event.target.value)}>{BOOKS.map(book => <option key={book}>{book}</option>)}</select></Field>
+                </div>
+                <p className="help">Optional. These labels group Results and don&rsquo;t change the Books form.</p>
+              </section>
+
+              <section className="form-section" aria-labelledby="look-heading">
+                <h2 id="look-heading">Look</h2>
+                <Group legend="Presets" hiddenLegend>
+                  <div className="presets">{DESIGN_PRESETS.map(preset => {
+                    const selected = JSON.stringify(form.design) === JSON.stringify(preset.design);
+                    return <button type="button" key={preset.id} className="preset" aria-pressed={selected} title={preset.description} onClick={() => change("design", { ...preset.design })}>
+                      <span className="preset-art" style={{ background: preset.design.background }}><QRPreview value="https://www.mastrabooks.dev" design={preset.design} size={56} /></span>{preset.name}
+                    </button>;
+                  })}</div>
+                </Group>
+                <div className="look-row">
+                  <Group legend="Logo">
+                    <div className="segmented">{([{ id: "mastra", text: "Mastra" }, { id: "none", text: "None" }, { id: "upload", text: "Upload" }] as const).map(item => <button type="button" key={item.id} aria-pressed={form.design.logo === item.id} onClick={() => design("logo", item.id)}>{item.text}</button>)}</div>
+                  </Group>
+                  <Field id="design-foreground" label="Color">
+                    <span className="color-input"><input id="design-foreground" type="color" value={form.design.foreground} onChange={event => design("foreground", event.target.value)} /><span className="mono">{form.design.foreground.toUpperCase()}</span></span>
+                  </Field>
+                </div>
+                {form.design.logo === "upload" && <Field id="design-logo-file" label="Logo file" hint="PNG, JPG or WebP, up to 2 MB.">
+                  <div className="file-row">
+                    <input id="design-logo-file" type="file" accept="image/png,image/jpeg,image/webp" aria-describedby="design-logo-file-hint" onChange={async event => {
+                      const file = event.target.files?.[0]; if (!file) return;
+                      setBusy(true); setProcessingLogo(true); setSaveError("");
+                      try { design("logoData", await normalizeLogo(file)); setToast({ message: "Logo added." }); }
+                      catch (failure) { setSaveError(failure instanceof Error ? failure.message : "Could not read the logo."); }
+                      finally { setBusy(false); setProcessingLogo(false); }
+                    }} />
+                    {form.design.logoData && <img src={form.design.logoData} alt="Uploaded logo" width="40" height="40" />}
+                  </div>
+                </Field>}
+                <details className="disclosure">
+                  <summary><span className="summary-title">More styling</span><span className="summary-text">{styleSummary(form.design)}</span><Icon name="chevron" size={18} /></summary>
+                  <div className="disclosure-body">
+                    {form.design.logo !== "none" && <Field id="design-logo-size" label={`Logo size · ${Math.round(form.design.logoSize * 100)}%`} hint="Kept small so the code still scans.">
+                      <input id="design-logo-size" type="range" min="12" max="22" value={Math.round(form.design.logoSize * 100)} aria-describedby="design-logo-size-hint" onChange={event => design("logoSize", Number(event.target.value) / 100)} /></Field>}
+                    <div className="grid-2">
+                      {([{ key: "background", label: "Background" }, { key: "eyeColor", label: "Corner color" }] as const).map(item => <Field key={item.key} id={`design-${item.key}`} label={item.label}>
+                        <span className="color-input"><input id={`design-${item.key}`} type="color" value={form.design[item.key]} onChange={event => design(item.key, event.target.value)} /><span className="mono">{form.design[item.key].toUpperCase()}</span></span></Field>)}
+                    </div>
+                    <div className="grid-2">
+                      <Field id="design-gradient" label="Color style"><select id="design-gradient" value={form.design.gradient} onChange={event => design("gradient", event.target.value as QRDesign["gradient"])}><option value="none">Solid color</option><option value="linear">Linear gradient</option><option value="radial">Radial gradient</option></select></Field>
+                      {form.design.gradient !== "none" && <Field id="design-gradient-color" label="Gradient end color"><span className="color-input"><input id="design-gradient-color" type="color" value={form.design.gradientColor} onChange={event => design("gradientColor", event.target.value)} /><span className="mono">{form.design.gradientColor.toUpperCase()}</span></span></Field>}
+                    </div>
+                    {form.design.gradient !== "none" && <Field id="design-gradient-angle" label={`Gradient angle · ${form.design.gradientRotation}°`}><input id="design-gradient-angle" type="range" min="0" max="360" value={form.design.gradientRotation} onChange={event => design("gradientRotation", Number(event.target.value))} /></Field>}
+                    <Group legend="Dot style">
+                      <div className="segmented dots">{(["square", "rounded", "dots", "classy"] as const).map(shape => <button type="button" key={shape} aria-pressed={form.design.dots === shape} onClick={() => design("dots", shape)}><span className={`pattern ${shape}`} aria-hidden="true">{Array.from({ length: 9 }, (_, index) => <i key={index} />)}</span>{DOT_LABELS[shape]}</button>)}</div>
+                    </Group>
+                    <div className="grid-2">
+                      <Field id="design-corners" label="Corner frame"><select id="design-corners" value={form.design.corners} onChange={event => design("corners", event.target.value as QRDesign["corners"])}><option value="rounded">Rounded</option><option value="square">Square</option><option value="dot">Circle</option></select></Field>
+                      <Field id="design-eyes" label="Corner center"><select id="design-eyes" value={form.design.eyes} onChange={event => design("eyes", event.target.value as QRDesign["eyes"])}><option value="square">Square</option><option value="rounded">Rounded</option><option value="dot">Circle</option></select></Field>
+                    </div>
+                    <div className="grid-2">
+                      <Field id="design-frame" label="Print frame" hint="A frame makes the code smaller. Leave it off for 3″ stickers.">
+                        <select id="design-frame" value={form.design.frame} aria-describedby="design-frame-hint" onChange={event => design("frame", event.target.value as QRDesign["frame"])}><option value="none">No frame</option><option value="bottom">Outline with caption</option><option value="banner">Filled frame with caption</option></select></Field>
+                      {form.design.frame !== "none" && <Field id="design-frame-color" label="Frame color"><span className="color-input"><input id="design-frame-color" type="color" value={form.design.frameColor} onChange={event => design("frameColor", event.target.value)} /><span className="mono">{form.design.frameColor.toUpperCase()}</span></span></Field>}
+                    </div>
+                    {form.design.frame !== "none" && <Field id="design-caption" label="Frame caption"><input id="design-caption" value={form.design.caption} maxLength={80} onChange={event => design("caption", event.target.value)} /></Field>}
+                  </div>
+                </details>
+              </section>
+
+              <section className="form-section" aria-label="Tracking options">
+                <details className="disclosure">
+                  <summary><span className="summary-title">Tracking options</span><span className="summary-text">{form.utm.enabled ? "Campaign tags on" : "Campaign tags off"} · {form.expiresAt ? `Expires ${formatDate(form.expiresAt)}` : "No expiry"}</span><Icon name="chevron" size={18} /></summary>
+                  <div className="disclosure-body">
+                    <div className="switch-row">
+                      <div><span className="field-label" id="utm-label">Campaign tags</span><p className="help" id="utm-help">Adds utm tags, so the destination&rsquo;s analytics can see which code sent each visit.</p></div>
+                      <button type="button" role="switch" className="switch" aria-checked={form.utm.enabled} aria-labelledby="utm-label" aria-describedby="utm-help" onClick={() => utm("enabled", !form.utm.enabled)}><span /></button>
+                    </div>
+                    {form.utm.enabled && <>
+                      <div className="grid-2">
+                        <Field id="utm-source" label="Source"><input id="utm-source" value={form.utm.source} maxLength={160} onChange={event => utm("source", event.target.value)} placeholder="event" /></Field>
+                        <Field id="utm-medium" label="Medium"><input id="utm-medium" value={form.utm.medium} maxLength={160} onChange={event => utm("medium", event.target.value)} placeholder="qr" /></Field>
+                        <Field id="utm-campaign" label="Campaign"><input id="utm-campaign" value={form.utm.campaign} maxLength={160} onChange={event => utm("campaign", event.target.value)} placeholder={campaignLabel(form.event) || "northwind-ai-summit-2027"} /></Field>
+                        <Field id="utm-content" label="Content"><input id="utm-content" value={form.utm.content} maxLength={160} onChange={event => utm("content", event.target.value)} placeholder={campaignLabel(form.placement) || "booth-table"} /></Field>
+                      </div>
+                      <p className="help">Campaign and content default to the event and placement.</p>
+                    </>}
+                    <Field id="field-expiry" label="Expiry date" hint="Optional. The link stops working at the end of this day (UTC).">
+                      <input id="field-expiry" type="date" aria-describedby="field-expiry-hint" value={form.expiresAt?.slice(0, 10) || ""} onChange={event => change("expiresAt", event.target.value ? `${event.target.value}T23:59:59.999Z` : null)} /></Field>
+                  </div>
+                </details>
+                <details className="disclosure">
+                  <summary><span className="summary-title">Create several codes</span><span className="summary-text">Same destination and look, one per line</span><Icon name="chevron" size={18} /></summary>
+                  <div className="disclosure-body">
+                    <Field id="bulk-rows" label="One code per line" hint="name | event | placement · up to 25. Each gets its own tracking link.">
+                      <textarea id="bulk-rows" rows={5} value={bulk} aria-describedby="bulk-rows-hint" onChange={event => setBulk(event.target.value)} placeholder={"SF booth | Northwind AI Summit 2027 | Booth\nNYC insert | NYC meetup | Book insert"} /></Field>
+                    <div className="row"><button type="button" className="btn" onClick={() => void createBulk()}>{busy ? "Creating…" : "Create codes"}</button>{bulkResult && <p role="status" className="help">{bulkResult}</p>}</div>
+                  </div>
+                </details>
+              </section>
+            </fieldset>
+          </form>
+
+          <aside className={`art-panel ${sheetOpen ? "open" : ""}`} id="artwork-panel" aria-label="Artwork and downloads" role={isPhone && sheetOpen ? "dialog" : undefined} aria-modal={isPhone && sheetOpen ? true : undefined}
+            onKeyDown={event => { if (event.key === "Escape" && sheetOpen) setSheetOpen(false); }}>
+            <div className="sheet-head"><strong>{title}</strong><button type="button" ref={sheetClose} className="icon-button" aria-label="Close preview" onClick={() => setSheetOpen(false)}><Icon name="close" size={18} /></button></div>
+            <div className="art-state">
+              <span className={`state ${readyToDownload ? "saved" : editing ? "dirty" : ""}`} role="status">{stateText}</span>
+              {readyToDownload && <><label htmlFor="export-size" className="sr-only">PNG size</label><select id="export-size" className="small-select" disabled={busy} value={exportSize} onChange={event => setExportSize(event.target.value)}><option value="1024">PNG 1,024 px</option><option value="2048">PNG 2,048 px</option><option value="4096">PNG 4,096 px</option></select></>}
+            </div>
+            <div className="art-stage">
+              <QRPreview value={previewValue} design={form.design} size={260} />
+              {!editing && <span className="draft-band">Preview only · not a tracking link</span>}
+            </div>
+            {editing ? <div className="link-row"><input readOnly aria-label="Tracking link" value={trackingLink(origin, editing.slug)} onFocus={event => event.target.select()} /><button type="button" className="btn ghost small" onClick={() => void copyLink(editing)}><Icon name="copy" />Copy</button></div>
+              : <p className="help">Saving creates the permanent tracking link. Downloads unlock after that.</p>}
+            {previewNote && <p className="note">{previewNote}</p>}
+            {warnings.map(message => <p className="inline-alert" role="alert" key={message}>{message}</p>)}
+            {saveError && !warnings.includes(saveError) && <p className="inline-alert" role="alert">{saveError}</p>}
+            <button type="button" className="btn primary block" disabled={busy} onClick={primaryAction}><Icon name={readyToDownload ? "download" : "check"} />{primaryLabel}</button>
+            <div className="formats">
+              <span>Also</span>
+              {(["svg", "pdf"] as ExportFormat[]).map(format => <button type="button" key={format} className="text-button" aria-label={`Download ${format.toUpperCase()}`} disabled={busy || !readyToDownload} onClick={() => editing && void exportSaved(editing, format)}>{format.toUpperCase()}</button>)}
+              <button type="button" className="btn small" disabled={busy || !readyToDownload} onClick={() => editing && setStickerTarget(editing)}>Sticker sheet…</button>
+            </div>
+            {editing && hasUnsavedChanges && <p className="help">Save your changes to download.</p>}
+            {editing && <div className="art-stats"><span>{formatNumber(editing.scans)} scan{editing.scans === 1 ? "" : "s"}</span><button type="button" className="text-button" disabled={busy} onClick={() => viewResults(editing)}>Results →</button></div>}
+          </aside>
+        </div>
+
+        {isPhone && <div className="mobile-bar">
+          <button type="button" className="mini-art" aria-label={sheetOpen ? "Hide artwork and downloads" : "Show artwork and downloads"} aria-expanded={sheetOpen} aria-controls="artwork-panel" onClick={() => setSheetOpen(open => !open)}><QRPreview value={previewValue} design={form.design} size={44} /></button>
+          <div className="mini-meta"><strong className={saveError || Object.values(fieldErrors).some(Boolean) ? "error-text" : undefined}>{saveError || Object.values(fieldErrors).some(Boolean) ? "Check the form" : stateText}</strong><span>{sheetOpen ? "Artwork and downloads" : "Tap the code to preview"}</span></div>
+          <button type="button" className="btn primary" disabled={busy} onClick={primaryAction}>{busy ? "…" : readyToDownload ? "Download" : "Save"}</button>
+        </div>}
+      </div>}
+    </main>
+
+    {toast && <div className={`toast ${view === "editor" ? "above-bar" : ""}`} role="status"><Icon name="check" /><span>{toast.message}</span>
+      {toast.action && <button type="button" className="text-button" onClick={() => { const run = toast.action!.run; setToast(null); run(); }}>{toast.action.label}</button>}
+      <button type="button" className="icon-button" aria-label="Dismiss notification" onClick={() => setToast(null)}><Icon name="close" /></button></div>}
+
+    {archiveTarget && <Dialog labelledBy="archive-heading" describedBy="archive-description" onClose={() => setArchiveTarget(null)} busy={busy} fallbackFocus={codeFilterRef}>
+      <h2 id="archive-heading">Archive “{archiveTarget.name}”?</h2>
+      <p id="archive-description">Printed copies will stop opening the destination. Its {formatNumber(archiveTarget.scans)} scan{archiveTarget.scans === 1 ? "" : "s"} and book requests stay in Results, and you can restore it later.</p>
+      {error && <p className="inline-alert" role="alert">{error}</p>}
+      <div className="dialog-actions">
+        <button type="button" className="btn ghost" data-autofocus disabled={busy} onClick={() => setArchiveTarget(null)}>Cancel</button>
+        {archiveTarget.status === "active" && <button type="button" className="btn" disabled={busy} onClick={() => { const target = archiveTarget; setArchiveTarget(null); void setStatus(target, "paused"); }}>Pause instead</button>}
+        <button type="button" className="btn danger" disabled={busy} onClick={() => void archiveCode()}>{busy ? "Archiving…" : "Archive code"}</button>
+      </div>
+    </Dialog>}
+
+    {stickerTarget && <StickerSheetDialog code={stickerTarget} link={trackingLink(origin, stickerTarget.slug)} note={stickerNote} onClose={() => setStickerTarget(null)} onDone={message => setToast({ message })} fallbackFocus={codeFilterRef} />}
   </div>;
 }
 
-function Breakdown({ title, rows }: { title: string; rows: { name: string; scans: number }[] }) { const max = Math.max(1, ...rows.map(r => r.scans)); return <section className="breakdown"><h2>{title}</h2>{rows.length ? rows.slice(0, 6).map((row, index) => <div className="bar-row" key={`${row.name}-${index}`}><div><span>{row.name || "Unknown"}</span><strong>{row.scans.toLocaleString()}</strong></div><div className="bar-track"><div className="bar-fill" style={{ width: `${row.scans / max * 100}%` }} /></div></div>) : <p className="empty-copy">No scans in this period yet.</p>}</section>; }
 function Auth({ session, onSignedIn }: { session: SessionInfo; onSignedIn: () => Promise<void> }) {
-  const [mode, setMode] = useState<"login" | "signup">("login"); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [busy, setBusy] = useState(false);
-  async function submit(e: React.FormEvent) { e.preventDefault(); setBusy(true); setError(""); setNotice(""); try { const result = await api<{ confirmationRequired?: boolean; message?: string }>(`/api/auth/${mode}`, { method: "POST", body: JSON.stringify({ email, password }) }); if (result.confirmationRequired) { setNotice(result.message || "Check your email to confirm your account, then sign in."); setMode("login"); } else await onSignedIn(); } catch (e) { setError(e instanceof Error ? e.message : "Could not sign in."); } finally { setBusy(false); } }
-  return <div className="auth-layout"><div className="auth-intro"><img src="/mastra-logo.svg" alt="Mastra" width="150" /><div className="eyebrow">QR STUDIO · 2027</div><h1>Mastra<br />QR Studio</h1><p>Create branded QR codes and track visits to your books and events.</p><div className="auth-qr"><QRPreview value="https://www.mastrabooks.dev" design={DESIGN_PRESETS[2].design} size={220} /></div></div><div className="auth-card"><div className="eyebrow">YOUR WORKSPACE</div><h2>{mode === "login" ? "Sign in" : "Create your account"}</h2><p>{mode === "login" ? "Access your QR code library and scan reports." : "Save and manage your QR codes in a private account."}</p>{!session.configured && <div className="alert">Your studio's account service is not connected yet. Connect it before signing in.</div>}<form onSubmit={e => void submit(e)}><Field label="Work email"><input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" placeholder="you@mastra.ai" /></Field><Field label="Password" hint={mode === "signup" ? "Use at least 12 characters." : undefined}><input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={mode === "signup" ? 12 : 1} autoComplete={mode === "signup" ? "new-password" : "current-password"} /></Field>{error && <p className="alert" role="alert">{error}</p>}{notice && <p className="soft-callout" role="status">{notice}</p>}<button type="submit" disabled={busy || !session.configured} className="btn primary full">{busy ? "One moment…" : mode === "login" ? "Sign in" : "Create account"}<Icon name="arrow" size={17} /></button></form><button className="button-link auth-switch" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); setNotice(""); }}>{mode === "login" ? "New here? Create an account" : "Already have an account? Sign in"}</button><p className="preview-tip"><Icon name="shield" size={15} /> Your codes and analytics belong to your account.</p></div></div>;
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api<{ confirmationRequired?: boolean; message?: string }>(`/api/auth/${mode}`, { method: "POST", body: JSON.stringify({ email, password }) });
+      if (result.confirmationRequired) { setNotice(result.message || "Check your email to confirm your account, then sign in."); setMode("login"); }
+      else await onSignedIn();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not sign in."); }
+    finally { setBusy(false); }
+  }
+  const passwordHint = mode === "signup" ? "Use at least 12 characters." : undefined;
+  return <div className="center-page">
+    <form className="auth-card" onSubmit={event => void submit(event)}>
+      <img src="/mastra-logo.svg" alt="Mastra" width="110" />
+      <h1>{mode === "login" ? "Sign in to QR Studio" : "Create your QR Studio account"}</h1>
+      {!session.configured && <p className="inline-alert">The account service isn&rsquo;t connected yet. Connect it before signing in.</p>}
+      <Field id="auth-email" label="Work email"><input id="auth-email" type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="email" placeholder="you@mastra.ai" /></Field>
+      <Field id="auth-password" label="Password" hint={passwordHint}><input id="auth-password" type="password" value={password} aria-describedby={passwordHint ? "auth-password-hint" : undefined} onChange={event => setPassword(event.target.value)} required minLength={mode === "signup" ? 12 : 1} autoComplete={mode === "signup" ? "new-password" : "current-password"} /></Field>
+      {error && <p className="inline-alert" role="alert">{error}</p>}
+      {notice && <p className="note" role="status">{notice}</p>}
+      <button type="submit" disabled={busy || !session.configured} className="btn primary block">{busy ? "One moment…" : mode === "login" ? "Sign in" : "Create account"}</button>
+      <button type="button" className="text-button" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); setNotice(""); }}>{mode === "login" ? "New here? Create an account" : "Already have an account? Sign in"}</button>
+    </form>
+  </div>;
 }

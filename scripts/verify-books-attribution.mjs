@@ -184,6 +184,13 @@ try {
     await expect(row.locator('span.capitalize')).toHaveText(status);
   }
   await screenshot('books-delivered');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot('books-status-mobile');
+  const shortControls = await page.locator('main').evaluate(main => [...main.querySelectorAll('button,select,a')]
+    .filter(control => control.getBoundingClientRect().width > 0 && control.getBoundingClientRect().height < 44)
+    .map(control => control.tagName));
+  assert.deepEqual(shortControls, [], 'Private status controls need usable phone touch targets');
+  await page.setViewportSize({ width: 1440, height: 1050 });
   finalMetrics = (await report()).totals;
   assert.deepEqual(finalMetrics, { requests: 1, booksRequested: 4, booksShipped: 4, deliveredOrders: 1, needsAttention: 0 });
 

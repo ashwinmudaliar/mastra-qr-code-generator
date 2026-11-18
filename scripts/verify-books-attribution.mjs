@@ -63,6 +63,14 @@ async function report() {
 }
 async function screenshot(name) {
   await page.evaluate(() => document.fonts.ready);
+  if (new URL(page.url()).origin === qr) {
+    await expect(page.locator('.qr-preview [role="status"]')).toHaveCount(0);
+    await expect(page.locator('.qr-preview [role="alert"]')).toHaveCount(0);
+    const refresh = page.getByRole('button', { name: 'Refresh analytics', exact: true });
+    if (await refresh.count()) await expect(refresh).toBeEnabled();
+    const dismiss = page.getByRole('button', { name: 'Dismiss notification', exact: true });
+    if (await dismiss.count()) await dismiss.click();
+  }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name}: horizontal overflow`);
   await page.screenshot({ path: output + name + '.png', fullPage: true });
 }

@@ -81,6 +81,12 @@ const checkRedirect = async (method, destination) => {
   assert.match(response.headers.get('cache-control'), /no-store/);
   const actual = new URL(response.headers.get('location'));
   const expected = new URL(destination);
+  if (session.booksPreviewOrigin && expected.pathname === '/' && ['mastrabooks.dev', 'www.mastrabooks.dev'].includes(expected.hostname)) {
+    const preview = new URL(session.booksPreviewOrigin);
+    expected.protocol = preview.protocol;
+    expected.host = preview.host;
+    assert.equal(actual.searchParams.has('qr_ref'), method === 'GET', 'Only recorded visits receive attribution');
+  }
   assert.equal(actual.origin, expected.origin);
   assert.equal(actual.pathname, expected.pathname);
   assert.equal(actual.searchParams.get('review'), expected.searchParams.get('review'));

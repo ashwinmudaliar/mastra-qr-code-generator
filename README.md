@@ -13,6 +13,7 @@ Supabase Auth is retained for a later login rollout. No signup, email confirmati
 - PNG, SVG, and PDF downloads using the saved tracking link.
 - Event, book, placement, and UTM labels; bulk creation of up to 25 codes.
 - A searchable code library, event/book/code comparisons, daily scan reports, country/city/device summaries, and CSV exports.
+- Private Books attribution preview: signed QR visits connect to test book requests and simulated shipment/delivery results. Books production remains unchanged; no real books or emails are sent in this flow.
 
 A scan is a tracking-link visit, not a unique person or fulfilled order. Location is approximate. Use separate codes for reliable event attribution. Existing printed static QR codes do not automatically acquire tracking.
 
@@ -52,6 +53,7 @@ The HTTP and browser checks create and remove their own temporary codes. QR test
 
 - [Design](docs/DESIGN.md): Mastra tokens, component behavior, copy, and review criteria.
 - [Architecture](docs/ARCHITECTURE.md): data flow, ownership, scan semantics, and source map.
+- [Books attribution](docs/FULFILLMENT.md): integration contract, isolated preview, reporting definitions, and release boundary.
 - [Maintenance](docs/MAINTENANCE.md): development, deployment, migrations, and launch checks.
 - [Agent instructions](AGENTS.md): repository rules for future coding agents.
 - [Maintenance skill](.agents/skills/maintain-qr-studio/SKILL.md): a focused workflow for agent-assisted changes.

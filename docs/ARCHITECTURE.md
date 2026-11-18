@@ -36,6 +36,8 @@ The initial schema is versioned under `supabase/migrations/`. `supabase/schema.s
 - Reports aggregate in UTC, group by event/book/code and coarse location/device, and expose the latest 100 visits. Exact daily counts accompany the chart. CSV exports of recent visits are not complete event-history exports.
 - Event/book/placement labels identify the code's campaign. Location cannot establish which booth or event a person attended.
 - UTM parameters preserve other query parameters and URL fragments. Fulfillment conversion reporting requires an integration with the destination site.
+- The protected Books preview integration adds a signed reference only for a recorded visit to the standard Books root intake. Separate partner/card/Agents in Prod routes are excluded. Saved destinations and slugs stay unchanged; a configured private preview rewrites the Books root destination to the protected test portal. See [Books attribution](FULFILLMENT.md).
+- Fulfillment reports use the original visit date and frozen event labels. Existing scan reports group by the code's current labels. The UI explains historical-label selections and does not calculate a misleading conversion rate across those definitions.
 - Scan records currently have no automatic retention/expiry policy. Analytics reads paginated records and aggregates in the application; high-volume traffic will need database aggregation and a retention decision.
 
 ## Source map
@@ -56,4 +58,4 @@ Client/server contracts live in `lib/types.ts`. The database uses snake_case col
 
 ## Boundaries
 
-This is a Mastra event/book QR workspace, not a complete commercial QR SaaS clone. It has no billing, team roles/shared ownership, SSO provisioning, precise GPS, unique-visitor tracking, order conversion integration, or dynamic file/vCard/Wi-Fi content. Do not imply those capabilities in copy or sample data.
+This is a Mastra event/book QR workspace, not a complete commercial QR SaaS clone. It has no billing, team roles/shared ownership, SSO provisioning, precise GPS, unique-visitor tracking, production fulfillment reporting, or dynamic file/vCard/Wi-Fi content. The Books connection currently uses isolated test requests and explicit simulated fulfillment. Do not imply capabilities or production evidence that have not been activated and verified.

@@ -50,7 +50,13 @@ The gateway's service credential bypasses RLS, so those explicit filters are ess
 
 `scan-gateway` resolves a single code by its random slug and optionally records a coarse visit. It cannot list or edit codes or read analytics. In `functions/scan-gateway/index.ts`, replace `__SCAN_GATEWAY_KEY_SHA256__` with the digest in memory and upload `index.ts`, `core.ts`, and `deno.json` together.
 
-It bounds requests to 4 KB, validates metadata, honors pause/expiry, and returns only one destination. A scan-storage error is logged without request payload data and does not interrupt a valid redirect. It records UTC time, approximate Vercel country/region/city, and device category, without retaining raw IP addresses or full user agents. Known crawlers, prefetches, and HEAD requests are excluded; counts are link visits.
+It bounds requests to 4 KB, validates metadata, honors pause/expiry, and returns one destination plus bounded code/visit metadata when a visit was successfully recorded. Only the authenticated Next.js server receives this metadata and can sign the optional Books reference. A scan-storage error is logged without request payload data and does not interrupt a valid redirect. It records UTC time, approximate Vercel country/region/city, and device category, without retaining raw IP addresses or full user agents. Known crawlers, prefetches, and HEAD requests are excluded; counts are link visits.
+
+### Books preview gateway
+
+`books-preview-gateway` stores only isolated test requests in `qr_books_preview_requests`, created by `20261118181555_books_preview_requests.sql` in the QR Studio project. Deploy its `index.ts`, `core.ts`, and `deno.json` with the explicit repository-relative entrypoint/import-map paths. Replace `__BOOKS_PREVIEW_GATEWAY_KEY_SHA256__` in memory with a fresh independent key's SHA-256 digest. It authenticates that bearer before every operation; `verify_jwt: false` relies on this explicit check. No browser grants or policies are added. Run `tests/books-preview-rls.sql` and the gateway tests after changes.
+
+The private Books project receives only this scoped gateway credential, plus its signing/reporting secrets; no production Books database/provider credentials. See [Books attribution](../docs/FULFILLMENT.md) for the full contract and production release boundary.
 
 Rotate a compromised bearer by replacing its deployed verifier and Vercel variable in the same maintenance window, then verify that gateway's flow. Keep the two credentials independent. `supabase/functions/**` is excluded from the Next.js TypeScript project; its Deno imports are pinned and its platform-neutral logic is tested through Node.
 

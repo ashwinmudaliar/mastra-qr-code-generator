@@ -26,6 +26,8 @@ Then run `node scripts/verify-export-artifacts.mjs` for local downloads, or `nod
 
 Run `node scripts/verify-editor-state.mjs` after changing editor state or asynchronous actions. Its isolated browser responses exercise delayed saves, upload processing, failed-save recovery, retained pause status, and analytics refresh without creating database fixtures or changing account settings.
 
+For fulfillment layout/error/filter regression coverage, run `QR_UI_TEST_URL=http://127.0.0.1:3147 node scripts/verify-fulfillment-ui.mjs` with a loopback development server. It supplies browser fixtures only and checks six widths, historical labels, preserved matching results on outages, and unreadable/overflowing controls. It does not prove the hosted Books integration.
+
 Local checks do not establish hosted private access. After changing the private workspace, verify that unauthenticated requests to the page, session, codes, analytics, and scan routes are blocked by Vercel. Through authorized preview access, use a temporary code to check create/upload/save/reopen, every export format, destination changes, and an actual recorded visit. Confirm persistence in a fresh browser session and remove only the test fixture. Check that an unauthenticated workspace-gateway request fails and that ordinary Data API roles cannot read or modify private-workspace rows.
 
 ## Schema changes
@@ -33,6 +35,16 @@ Local checks do not establish hosted private access. After changing the private 
 Use the Supabase project's migration workflow. Inspect existing schema first; create a new migration, do not edit one already applied. Keep RLS on all QR Studio tables and test SELECT/INSERT/UPDATE/DELETE paths. A code must have exactly one account owner or private workspace. Existing owner policies must not expose workspace rows, and gateway queries must always include their fixed workspace filter. Anonymous access to tables remains denied; client-side filtering is not authorization. Update contracts and repository conversions with the migration.
 
 The initial migration is `supabase/migrations/20261117172014_qr_studio_initial.sql`. Deployment does not automatically run arbitrary new SQL from this repository; apply and verify migrations deliberately before publishing dependent code.
+
+`20261118181555_books_preview_requests.sql` belongs only to the QR Studio project. It creates isolated synthetic Books requests without recipient/contact/street fields. `tests/books-preview-rls.sql` verifies browser-role denial. The informational no-policy advisor on this table is intentional, like `qr_studio_workspaces`. The separately authenticated `books-preview-gateway` is the only application writer. Do not apply this migration to the production Books project.
+
+## Private Books integration
+
+See [the wire contract](FULFILLMENT.md). Keep Books in the separate protected `mastrabooks-qr-preview` Vercel project with no production database, shipping, CRM, Sheets, email, or SMS credentials. All deployments require Vercel authentication. The Books source branch's production migration remains unapplied and its capture flag stays disabled outside preview.
+
+Configure the Books gateway, signing, and reporting keys independently. QR Studio receives the reporting key and the Books automation bypass only on its server. Never put bypasses into links or browser bundles. Report requests use an exact configured origin, reject redirects, and scope code IDs to the active workspace. When replacing the Books deployment, update both QR_BOOKS_PREVIEW_ORIGIN and QR_BOOKS_REPORT_URL, then redeploy QR Studio. Old deployments retain environment values; revoke obsolete integration credentials when retiring them.
+
+Validate an actual hosted QR→Books submission→simulated shipped/delivered→QR Analytics flow, transport replay, invalid signatures, direct unattributed requests, access denial, and exact fixture cleanup. No production test order is required or authorized by this preview workflow. Account setup remains deferred.
 
 ## Deployment
 

@@ -54,4 +54,29 @@ export type SessionInfo = {
   configured: boolean;
   mode: "local" | "supabase" | "private";
   user: { id: string; email: string } | null;
+  booksPreviewOrigin?: string;
+};
+
+export type FulfillmentMetrics = {
+  requests: number;
+  booksRequested: number;
+  booksShipped: number;
+  deliveredOrders: number;
+  needsAttention: number;
+};
+export type FulfillmentReport = {
+  version: 1;
+  preview: boolean;
+  updatedAt: string;
+  totals: FulfillmentMetrics;
+  byCode: (FulfillmentMetrics & { codeId: string; event: string; book: string; placement: string })[];
+  byCountry: (FulfillmentMetrics & { name: string })[];
+  byCity: (FulfillmentMetrics & { name: string })[];
+  coverage: { trackedRequests: number; untrackedDeliveryRequests: number };
+};
+export type FulfillmentResponse = {
+  status: "connected" | "unavailable" | "not_configured";
+  report: FulfillmentReport | null;
+  previewOrigin?: string;
+  message?: string;
 };

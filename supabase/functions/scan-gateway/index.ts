@@ -12,12 +12,12 @@ Deno.serve((request: Request) => handleGateway(request, {
   keyHash: KEY_HASH,
   async findCode(slug) {
     const { data, error } = await db.from("qr_studio_codes")
-      .select("id,destination,status,expires_at,utm").eq("slug", slug).maybeSingle();
+      .select("id,destination,status,expires_at,utm,event,book,placement").eq("slug", slug).maybeSingle();
     if (error) throw new Error("Code lookup unavailable");
     return data;
   },
-  async insertScan(codeId, metadata) {
-    const { error } = await db.from("qr_studio_scans").insert({ code_id: codeId, ...metadata });
+  async insertScan(codeId, metadata, visit) {
+    const { error } = await db.from("qr_studio_scans").insert({ id: visit.id, scanned_at: visit.scannedAt, code_id: codeId, ...metadata });
     if (error) throw new Error("Scan storage unavailable");
   },
   onRecordingError() { console.error("QR Studio scan could not be recorded"); },

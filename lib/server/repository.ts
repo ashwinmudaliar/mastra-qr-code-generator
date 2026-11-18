@@ -75,6 +75,7 @@ export async function findScanCode(slug:string,local:boolean):Promise<QRCodeReco
 }
 export async function recordScan(codeId:string,metadata:Omit<ScanRecord,"id"|"codeId"|"scannedAt">,local:boolean) {
   const scan:ScanRecord={id:randomUUID(),codeId,scannedAt:new Date().toISOString(),...metadata};
-  if(local)return localTransaction(data=>{data.scans.push(scan);},true);
+  if(local)return localTransaction(data=>{data.scans.push(scan);return scan;},true);
   const{error}=await createScanClient().from("qr_studio_scans").insert({id:scan.id,code_id:codeId,scanned_at:scan.scannedAt,...metadata});check(error);
+  return scan;
 }

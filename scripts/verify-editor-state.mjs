@@ -4,7 +4,8 @@ import sharp from 'sharp';
 
 // These cases exercise real browser interactions with isolated API fixtures.
 // No account, stored code, scan, or production service is created or changed.
-const base = 'http://127.0.0.1:3147';
+const base = process.env.QR_UI_TEST_URL || 'http://127.0.0.1:3147';
+assert.ok(['127.0.0.1', 'localhost'].includes(new URL(base).hostname), 'Use a local development server');
 const browser = await chromium.launch({ headless: true });
 const failures = [];
 const deferred = () => {
@@ -40,6 +41,7 @@ async function fixture(viewport = { width: 1440, height: 1000 }) {
       }
       return json({ code }, request.method() === 'POST' ? 201 : 200);
     }
+    if (url.pathname === '/api/fulfillment') return json({ status: 'not_configured', report: null });
     if (url.pathname === '/api/analytics') {
       state.analyticsRequests.push(url.search);
       const days = Number(url.searchParams.get('days') || 30);

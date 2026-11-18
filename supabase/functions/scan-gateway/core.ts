@@ -5,11 +5,15 @@ export type GatewayCode = {
   status: string;
   expires_at: string | null;
   utm: unknown;
+  event: string;
+  book: string;
+  placement: string;
 };
+export type GatewayVisit = { id: string; scannedAt: string };
 export type GatewayDependencies = {
   keyHash: string;
   findCode: (slug: string) => Promise<GatewayCode | null>;
-  insertScan: (codeId: string, metadata: ScanMetadata) => Promise<void>;
+  insertScan: (codeId: string, metadata: ScanMetadata, visit: GatewayVisit) => Promise<void>;
   now?: () => number;
   onRecordingError?: () => void;
 };
@@ -87,11 +91,18 @@ export async function handleGateway(request: Request, dependencies: GatewayDepen
     if (code.status !== "active" || (code.expires_at !== null && (!Number.isFinite(Date.parse(code.expires_at)) || Date.parse(code.expires_at) <= now))) return json({ error: "Code unavailable" }, 410);
     const destination = redirectDestination(code);
     let recorded = false;
+    let attribution = null;
     if (payload.count) {
-      try { await dependencies.insertScan(code.id, payload.metadata); recorded = true; }
+      try {
+        const visit = { id: crypto.randomUUID(), scannedAt: new Date(now).toISOString() };
+        await dependencies.insertScan(code.id, payload.metadata, visit);
+        recorded = true;
+        attribution = { v: 1, codeId: code.id, visitId: visit.id, visitedAt: visit.scannedAt,
+          event: code.event, book: code.book, placement: code.placement };
+      }
       catch { dependencies.onRecordingError?.(); }
     }
-    return json({ destination, recorded });
+    return json({ destination, recorded, attribution });
   } catch {
     return json({ error: "Scan service temporarily unavailable" }, 503);
   }

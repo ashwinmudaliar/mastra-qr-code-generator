@@ -1,12 +1,14 @@
 import { chromium, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
+import jsQR from 'jsqr';
 
 // These cases exercise real browser interactions with isolated API fixtures.
 // No account, stored code, scan, or production service is created or changed.
 const base = process.env.QR_UI_TEST_URL || 'http://127.0.0.1:3147';
 assert.ok(['127.0.0.1', 'localhost'].includes(new URL(base).hostname), 'Use a local development server');
-const browser = await chromium.launch({ headless: true });
+// QR_BROWSER_PATH optionally points at a preinstalled Chromium when the pinned Playwright build is absent.
+const browser = await chromium.launch({ headless: true, ...(process.env.QR_BROWSER_PATH ? { executablePath: process.env.QR_BROWSER_PATH } : {}) });
 const failures = [];
 const deferred = () => {
   let resolve;
@@ -15,7 +17,7 @@ const deferred = () => {
 };
 
 async function fixture(viewport = { width: 1440, height: 1000 }) {
-  const context = await browser.newContext({ viewport });
+  const context = await browser.newContext({ viewport, reducedMotion: 'reduce' });
   const page = await context.newPage();
   const state = { codes: [], scans: 0, holdSave: false, failSave: false, started: deferred(), release: deferred(), analyticsRequests: [] };
   await page.route('**/api/**', async route => {
@@ -32,7 +34,7 @@ async function fixture(viewport = { width: 1440, height: 1000 }) {
       let code;
       if (request.method() === 'POST') {
         const now = new Date().toISOString();
-        code = { ...input, id: '00000000-0000-4000-8000-000000000001', slug: 'browsercheck', createdAt: now, updatedAt: now, scans: 0 };
+        code = { ...input, id: '00000000-0000-4000-8000-000000000001', slug: 'browsercheck', archivedAt: null, createdAt: now, updatedAt: now, scans: 0 };
         state.codes.push(code);
       } else {
         code = state.codes.find(record => record.id === url.pathname.split('/').at(-1));
@@ -54,14 +56,25 @@ async function fixture(viewport = { width: 1440, height: 1000 }) {
   });
   page.on('dialog', dialog => dialog.accept());
   await page.goto(base);
-  await page.getByLabel('QR code name').waitFor();
+  await page.getByRole('heading', { name: /^Codes/ }).waitFor();
   return { page, state, close: async () => { state.release.resolve(); await context.close(); } };
 }
 
+const nameField = page => page.getByLabel('Name', { exact: true });
+const nav = (page, name) => page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name, exact: true });
+const panelPrimary = page => page.locator('#artwork-panel button.btn.primary');
+const barButton = (page, name) => page.locator('.mobile-bar').getByRole('button', { name, exact: true });
+
+async function openNew(page) {
+  await page.getByRole('button', { name: 'New code', exact: true }).first().click();
+  await nameField(page).waitFor();
+}
+
 async function saveFixture(page) {
-  await page.getByLabel('QR code name').fill('Browser state regression');
-  await page.getByLabel('Event or campaign').fill('Browser regression');
-  await page.getByRole('button', { name: 'Save QR code', exact: true }).click();
+  await openNew(page);
+  await nameField(page).fill('Browser state regression');
+  await page.getByLabel('Event', { exact: true }).fill('Browser regression');
+  await page.getByRole('button', { name: 'Save code', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Download PNG', exact: true })).toBeEnabled();
 }
 
@@ -71,17 +84,36 @@ async function check(name, body) {
 }
 
 try {
+  await check('unsaved preview encodes the draft placeholder, not the destination', async () => {
+    const test = await fixture();
+    const { page } = test;
+    try {
+      await openNew(page);
+      await expect(page.getByText('Preview only · not a tracking link', { exact: true })).toBeVisible();
+      const image = page.locator('.art-stage .qr-preview img');
+      await image.waitFor();
+      // Decode the rendered artwork itself; the on-screen draft label deliberately covers its center.
+      const svg = await image.evaluate(async element => (await fetch(element.src)).text());
+      const { data, info } = await sharp(Buffer.from(svg)).resize(640).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      assert.equal(jsQR(new Uint8ClampedArray(data), info.width, info.height)?.data, base + '/q/draftpreview');
+      const scan = await fetch(base + '/q/draftpreview', { redirect: 'manual' });
+      assert.equal(scan.status, 404, 'A printed draft must not redirect');
+      assert.match(await scan.text(), /unsaved preview/i);
+    } finally { await test.close(); }
+  });
+
   await check('pending save protects the draft and navigation', async () => {
     const test = await fixture();
     const { page, state } = test;
     try {
+      await openNew(page);
       state.holdSave = true;
-      await page.getByLabel('QR code name').fill('Pending save');
+      await nameField(page).fill('Pending save');
       const original = await page.getByLabel('Destination URL').inputValue();
-      await page.getByRole('button', { name: 'Save QR code', exact: true }).click();
+      await page.getByRole('button', { name: 'Save code', exact: true }).click();
       await state.started.promise;
       const locked = await page.getByLabel('Destination URL').isDisabled();
-      const navigationLocked = await page.getByRole('button', { name: 'Your QR codes', exact: true }).isDisabled();
+      const navigationLocked = await nav(page, 'Codes').isDisabled();
       // Before the fix this edit is accepted, then silently overwritten by the response.
       if (!locked) await page.getByLabel('Destination URL').fill('https://www.mastrabooks.dev/?edited-during-save=1');
       state.release.resolve();
@@ -96,13 +128,31 @@ try {
   await check('failed save unlocks controls and retains edits', async () => {
     const test = await fixture();
     try {
+      await openNew(test.page);
       test.state.failSave = true;
-      await test.page.getByLabel('QR code name').fill('Keep this draft');
-      await test.page.getByRole('button', { name: 'Save QR code', exact: true }).click();
+      await nameField(test.page).fill('Keep this draft');
+      await test.page.getByRole('button', { name: 'Save code', exact: true }).click();
       await expect(test.page.getByRole('alert').filter({ hasText: 'Temporary fixture save failure.' })).toBeVisible();
-      await expect(test.page.getByLabel('QR code name')).toBeEnabled();
-      assert.equal(await test.page.getByLabel('QR code name').inputValue(), 'Keep this draft');
-      await expect(test.page.getByRole('button', { name: 'Your QR codes', exact: true })).toBeEnabled();
+      await expect(nameField(test.page)).toBeEnabled();
+      assert.equal(await nameField(test.page).inputValue(), 'Keep this draft');
+      await expect(nav(test.page, 'Codes')).toBeEnabled();
+    } finally { await test.close(); }
+  });
+
+  await check('phone save with a missing name shows the error at the field', async () => {
+    const test = await fixture({ width: 390, height: 844 });
+    const { page, state } = test;
+    try {
+      await openNew(page);
+      await barButton(page, 'Save').click();
+      const message = page.getByText('Add a name to save this code.', { exact: true });
+      await expect(message).toBeVisible();
+      await page.waitForFunction(() => document.activeElement?.id === 'field-name');
+      await page.waitForTimeout(400);
+      const box = await message.boundingBox();
+      assert.ok(box && box.y >= 0 && box.y + box.height <= 844, 'The error must be inside the phone viewport');
+      assert.equal(await nameField(page).getAttribute('aria-invalid'), 'true');
+      assert.equal(state.codes.length, 0, 'Validation must not send a save');
     } finally { await test.close(); }
   });
 
@@ -110,9 +160,9 @@ try {
     const test = await fixture({ width: 390, height: 844 });
     const { page, state } = test;
     try {
-      await page.getByLabel('QR code name').fill('Logo upload fixture');
-      await page.getByRole('tab', { name: 'Design', exact: true }).click();
-      await page.getByRole('button', { name: 'Your logo', exact: true }).click();
+      await openNew(page);
+      await nameField(page).fill('Logo upload fixture');
+      await page.getByRole('group', { name: 'Logo' }).getByRole('button', { name: 'Upload', exact: true }).click();
       await page.evaluate(() => {
         const original = HTMLImageElement.prototype.decode;
         HTMLImageElement.prototype.decode = async function () {
@@ -122,64 +172,70 @@ try {
         };
       });
       const buffer = await sharp({ create: { width: 32, height: 32, channels: 4, background: '#143a26' } }).png().toBuffer();
-      await page.getByLabel('Upload your logo').setInputFiles({ name: 'fixture-logo.png', mimeType: 'image/png', buffer });
+      await page.getByLabel('Logo file').setInputFiles({ name: 'fixture-logo.png', mimeType: 'image/png', buffer });
       await page.waitForFunction(() => window.__logoPending);
-      const uploadLocked = await page.getByLabel('Upload your logo').isDisabled();
-      const presetLocked = await page.getByRole('button', { name: 'Classic', exact: true }).isDisabled();
-      const navigationLocked = await page.getByRole('button', { name: 'Your QR codes', exact: true }).isDisabled();
-      await page.getByRole('button', { name: 'Preview', exact: true }).click();
-      await expect(page.locator('.preview-panel > button.primary')).toBeDisabled();
-      await expect(page.locator('.preview-panel > button.primary')).toHaveText('Adding logo…');
-      await page.getByRole('button', { name: 'Edit', exact: true }).click();
+      const uploadLocked = await page.getByLabel('Logo file').isDisabled();
+      const presetLocked = await page.getByRole('group', { name: 'Presets' }).getByRole('button', { name: /Classic$/ }).isDisabled();
+      const navigationLocked = await nav(page, 'Codes').isDisabled();
+      await page.getByRole('button', { name: 'Show artwork and downloads', exact: true }).click();
+      await expect(panelPrimary(page)).toBeDisabled();
+      await expect(panelPrimary(page)).toHaveText('Adding logo…');
+      await page.getByRole('button', { name: 'Close preview', exact: true }).click();
       await page.evaluate(() => window.__releaseLogo());
       await expect(page.getByAltText('Uploaded logo')).toBeVisible();
-      await expect(page.getByLabel('Upload your logo')).toBeEnabled();
+      await expect(page.getByLabel('Logo file')).toBeEnabled();
       assert.equal(uploadLocked, true, 'A second upload must not race the current one');
       assert.equal(presetLocked, true, 'Presets must not replace a design during logo normalization');
       assert.equal(navigationLocked, true, 'Navigation must not move an upload into another draft');
-      await page.getByRole('button', { name: 'Preview', exact: true }).click();
-      await page.getByRole('button', { name: 'Save QR code', exact: true }).click();
-      await expect(page.getByRole('button', { name: 'Download PNG', exact: true })).toBeEnabled();
+      await barButton(page, 'Save').click();
+      await expect(barButton(page, 'Download')).toBeEnabled();
       assert.match(state.codes[0].design.logoData, /^data:image\/png;base64,/);
     } finally { await test.close(); }
   });
 
-  await check('library pause survives returning to the retained editor and changing destination', async () => {
+  await check('library pause offers undo and survives reopening the editor and changing destination', async () => {
     const test = await fixture();
     const { page, state } = test;
     try {
       await saveFixture(page);
-      await page.getByRole('button', { name: 'Your QR codes', exact: true }).click();
-      await page.getByLabel('More actions for Browser state regression').selectOption('pause');
-      await expect(page.locator('.code-row .status-pill')).toHaveText('paused');
-      await page.getByRole('button', { name: 'Create a QR code', exact: true }).click();
-      await page.getByRole('tab', { name: 'Tracking', exact: true }).click();
+      await nav(page, 'Codes').click();
+      const row = page.locator('.codes-table tr').filter({ hasText: 'Browser state regression' });
+      const pause = async () => {
+        await page.getByRole('button', { name: 'More actions for Browser state regression', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Pause', exact: true }).click();
+        await expect(row.locator('.status')).toHaveText('Paused');
+      };
+      await pause();
+      await page.getByRole('button', { name: 'Undo', exact: true }).click();
+      await expect(row.locator('.status')).toHaveText('Active');
+      assert.equal(state.codes[0].status, 'active', 'Undo restores the stored status');
+      await pause();
+      await row.getByRole('button', { name: 'Browser state regression', exact: true }).click();
       const editorStatus = await page.getByLabel('Code status').inputValue();
-      await page.getByRole('tab', { name: 'Content', exact: true }).click();
       await page.getByLabel('Destination URL').fill('https://www.mastrabooks.dev/?destination-edited=1');
       await page.getByRole('button', { name: 'Save changes', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Download PNG', exact: true })).toBeEnabled();
-      assert.equal(editorStatus, 'paused', `Retained editor reported ${editorStatus}; saving changed the stored status to ${state.codes[0].status}`);
+      assert.equal(editorStatus, 'paused', `Reopened editor reported ${editorStatus}; saving changed the stored status to ${state.codes[0].status}`);
       assert.equal(state.codes[0].status, 'paused');
       assert.equal(state.codes[0].slug, 'browsercheck');
     } finally { await test.close(); }
   });
 
-  await check('analytics refresh shows new visits without resetting filters', async () => {
+  await check('results refresh shows new visits without resetting filters', async () => {
     const test = await fixture({ width: 390, height: 844 });
     const { page, state } = test;
     try {
       await page.setViewportSize({ width: 1440, height: 1000 });
       await saveFixture(page);
-      await page.getByRole('button', { name: 'Scan analytics', exact: true }).click();
+      await nav(page, 'Results').click();
       await page.getByLabel('Filter analytics by event').selectOption('Browser regression');
       await page.getByLabel('Analytics period').selectOption('7');
       await page.getByLabel('Filter analytics by QR code').selectOption(state.codes[0].id);
-      const total = page.locator('.stat-card').filter({ hasText: 'Total scans' }).locator('strong');
+      const total = page.locator('.kpis [data-metric=scans] dd');
       await expect(total).toHaveText('0');
       state.scans = 1;
       const refresh = page.getByRole('button', { name: 'Refresh analytics', exact: true });
-      assert.equal(await refresh.count(), 1, 'Analytics needs an explicit refresh action for new scans');
+      assert.equal(await refresh.count(), 1, 'Results needs an explicit refresh action for new scans');
       await page.setViewportSize({ width: 390, height: 844 });
       await refresh.click();
       await expect(total).toHaveText('1');
@@ -188,7 +244,7 @@ try {
       assert.equal(await page.getByLabel('Filter analytics by QR code').inputValue(), state.codes[0].id);
       for (const width of [320, 390, 430, 1024, 1440]) {
         await page.setViewportSize({ width, height: 900 });
-        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `Analytics must fit ${width}px`);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `Results must fit ${width}px`);
       }
     } finally { await test.close(); }
   });

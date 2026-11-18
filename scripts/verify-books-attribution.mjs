@@ -135,7 +135,7 @@ try {
   await page.getByLabel(/^Address Line 1/).fill('123 Preview Lane');
   await page.getByLabel(/^City/).fill('Austin');
   await page.getByLabel(/^State/).selectOption('TX');
-  await page.getByLabel(/^ZIP/).fill('78701');
+  await page.getByLabel(/^Postal Code/).fill('78701');
   await screenshot('books-form');
   const savedResponse = page.waitForResponse(response => new URL(response.url()).origin === books && new URL(response.url()).pathname === '/api/orders' && response.request().method() === 'POST');
   await page.locator('form button[type="submit"]').click();

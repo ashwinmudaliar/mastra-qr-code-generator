@@ -4,6 +4,7 @@ import { destinationWithUTM, isAvailable, scanMetadata, shouldCountVisit } from 
 import { normalizeDestination } from "@/lib/server/validation";
 import { isPrivatePreview } from "@/lib/server/private-preview";
 import { booksDestination } from "@/lib/server/attribution";
+import { DRAFT_SLUG, SLUG_PATTERN } from "@/lib/tracking-link";
 export const dynamic="force-dynamic";
 export const runtime="nodejs";
 type Params={params:Promise<{slug:string}>};
@@ -14,7 +15,8 @@ export async function GET(request:Request,{params}:Params) {
     const{slug}=await params;const local=isLocalPreview(request);
     const mode=isPrivatePreview(request)?"private":local?"local":"supabase";
     const count=shouldCountVisit(request);
-    if(!/^[A-Za-z0-9_-]{12}$/.test(slug))return unavailable(404,"The link may be incomplete. Check the code or ask your event organizer.");
+    if(!SLUG_PATTERN.test(slug))return unavailable(404,"The link may be incomplete. Check the code or ask your event organizer.");
+    if(slug===DRAFT_SLUG)return unavailable(404,"This QR code was printed from an unsaved preview. Save it in QR Studio to create its tracking link.");
     if(!local && process.env.QR_SCAN_GATEWAY_KEY) {
       const projectUrl=process.env.NEXT_PUBLIC_SUPABASE_URL;
       if(!projectUrl)throw new Error("Scan service is not configured");

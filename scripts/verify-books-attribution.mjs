@@ -96,7 +96,8 @@ try {
   assert.ok(code.id && code.slug);
   assert.equal((await report()).totals.requests, 0);
 
-  browser = await chromium.launch({ headless: true });
+  // QR_BROWSER_PATH optionally points at a preinstalled Chromium when the pinned Playwright build is absent.
+  browser = await chromium.launch({ headless: true, ...(process.env.QR_BROWSER_PATH ? { executablePath: process.env.QR_BROWSER_PATH } : {}) });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1050 },
     userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' });
   for (const origin of roots) {
@@ -214,35 +215,38 @@ try {
   assert.equal(destination.searchParams.has('qr_ref'), false, 'HEAD must not receive attribution');
   assert.equal((await json(qr, '/api/analytics?days=30&codeId=' + code.id)).totalScans, 1, 'Only the original real browser visit should be counted');
 
+  const nav = name => page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name, exact: true });
+  const codeRow = () => page.locator('.codes-table tr').filter({ hasText: run });
   await page.goto(qr, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Scan analytics', exact: true }).click();
+  await nav('Results').click();
   await page.getByLabel('Filter analytics by event', { exact: true }).selectOption(event);
   await page.getByLabel('Filter analytics by QR code', { exact: true }).selectOption(code.id);
   for (const [metric, value] of Object.entries(finalMetrics)) {
-    await expect(page.locator(`.fulfillment-metrics [data-metric="${metric}"] dd`)).toHaveText(String(value));
+    await expect(page.locator(`.kpis [data-metric="${metric}"] dd`)).toHaveText(String(value));
   }
-  await expect(page.getByText('Simulated fulfillment', { exact: true })).toBeVisible();
+  await expect(page.getByText('Book requests simulated in preview', { exact: true })).toBeVisible();
   await screenshot('analytics-desktop');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel('Break down scans by', { exact: false }).selectOption('device');
-  await expect(page.getByRole('heading', { name: 'Scans over time', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Results by event', exact: true })).toBeVisible();
+  await page.getByRole('group', { name: 'Break down scans by', exact: true }).getByRole('button', { name: 'Device', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Scans per day', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'By event', exact: true })).toBeVisible();
   await screenshot('analytics-mobile');
 
   // Archive through the actual library: stopping a printed link must never
   // remove the request and shipment evidence that it already generated.
-  await page.getByRole('button', { name: 'Your QR codes', exact: true }).click();
-  await page.getByLabel('More actions for ' + run, { exact: true }).selectOption('archive');
-  const archiveDialog = page.getByRole('alertdialog');
-  await expect(archiveDialog.getByRole('heading', { name: 'Archive this QR code?', exact: true })).toBeVisible();
-  await expect(archiveDialog).toContainText(/fulfillment history/i);
+  await nav('Codes').click();
+  await page.getByRole('button', { name: 'More actions for ' + run, exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Archive…', exact: true }).click();
+  const archiveDialog = page.getByRole('dialog', { name: `Archive “${run}”?` });
+  await expect(archiveDialog).toBeVisible();
+  await expect(archiveDialog).toContainText(/book requests stay in Results/i);
   await page.setViewportSize({ width: 320, height: 844 });
   await screenshot('archive-confirmation-mobile');
   const archiveResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/codes/' + code.id && response.request().method() === 'DELETE');
   await archiveDialog.getByRole('button', { name: 'Archive code', exact: true }).click();
   assert.equal((await archiveResponse).status(), 200);
   await expect(archiveDialog).toHaveCount(0);
-  await expect(page.locator('.code-row').filter({ hasText: run })).toHaveCount(0);
+  await expect(codeRow()).toHaveCount(0);
   const archivedCode = (await json(qr, '/api/codes')).codes.find(item => item.id === code.id);
   assert.ok(archivedCode?.archivedAt);
   assert.equal(archivedCode.slug, code.slug);
@@ -256,26 +260,27 @@ try {
   assert.equal(staleEdit.status, 409, 'Stale edits must not reactivate an archive');
 
   await page.getByLabel('Filter QR code status', { exact: true }).selectOption('archived');
-  const archivedRow = page.locator('.code-row').filter({ hasText: run });
-  await expect(archivedRow.locator('.status-pill')).toHaveText(/archived/i);
-  await expect(archivedRow.getByRole('button', { name: 'Edit ' + run, exact: true })).toHaveCount(0);
+  const archivedRow = codeRow();
+  await expect(archivedRow.locator('.status')).toHaveText(/archived/i);
+  await expect(archivedRow.getByRole('button', { name: run, exact: true })).toHaveCount(0, { message: 'Archived codes cannot be opened for editing' });
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: width === 1440 ? 1050 : 844 });
     await screenshot('archived-library-' + width);
     if (width <= 390) {
-      const short = await archivedRow.locator('button,select').evaluateAll(controls => controls
+      const short = await archivedRow.locator('button,select').filter({ visible: true }).evaluateAll(controls => controls
         .filter(control => control.getBoundingClientRect().width > 0 && control.getBoundingClientRect().height < 44)
         .map(control => control.getAttribute('aria-label') || control.textContent));
       assert.deepEqual(short, [], 'Archived code controls must remain usable on phones');
     }
   }
-  await archivedRow.getByRole('button', { name: 'View analytics for ' + run, exact: true }).click();
+  await page.getByRole('button', { name: 'More actions for ' + run, exact: true }).click();
+  await page.getByRole('menuitem', { name: 'View results', exact: true }).click();
   assert.equal(await page.getByLabel('Filter analytics by QR code', { exact: true }).inputValue(), code.id);
   for (const [metric, value] of Object.entries(finalMetrics)) {
-    await expect(page.locator(`.fulfillment-metrics [data-metric="${metric}"] dd`)).toHaveText(String(value));
+    await expect(page.locator(`.kpis [data-metric="${metric}"] dd`)).toHaveText(String(value));
   }
   await screenshot('archived-analytics-desktop');
-  await page.getByRole('button', { name: 'Your QR codes', exact: true }).click();
+  await nav('Codes').click();
   await page.setViewportSize({ width: 390, height: 844 });
   const restoreResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/codes/' + code.id + '/restore' && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Restore ' + run, exact: true }).click();
@@ -289,7 +294,7 @@ try {
   assert.equal((await request(qr, '/q/' + code.slug)).status, 410, 'Restore keeps the link paused until explicitly activated');
   assert.deepEqual((await report()).totals, finalMetrics, 'Restoring must not duplicate or change fulfillment totals');
   await page.getByLabel('Filter QR code status', { exact: true }).selectOption('paused');
-  await expect(page.locator('.code-row').filter({ hasText: run }).locator('.status-pill')).toHaveText('paused');
+  await expect(codeRow().locator('.status')).toHaveText('Paused');
   await screenshot('restored-library-mobile');
   assert.deepEqual(blockedRequests, [], 'The connected flow must not navigate to production or mutate an unrelated service');
   assert.deepEqual(browserErrors, [], 'No browser runtime errors');

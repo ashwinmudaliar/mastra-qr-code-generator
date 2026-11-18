@@ -2,6 +2,7 @@
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import jsQR from 'jsqr';
@@ -29,8 +30,10 @@ const brand = await sharp(new URL('../public/mastra-logo.svg', import.meta.url).
 await sharp({ create: { width: 1024, height: 320, channels: 4, background: '#020202' } })
   .composite([{ input: brand, gravity: 'centre' }]).png().toFile(output + 'upload-logo.png');
 
-const browser = await chromium.launch({ headless: true });
+// QR_BROWSER_PATH optionally points at a preinstalled Chromium when the pinned Playwright build is absent.
+const browser = await chromium.launch({ headless: true, ...(process.env.QR_BROWSER_PATH ? { executablePath: process.env.QR_BROWSER_PATH } : {}) });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1050 } });
+page.on('dialog', dialog => dialog.accept());
 if (hosted) {
   // Establish a host-scoped protection cookie once; never attach the bypass
   // credential to third-party fonts, images, or a redirect destination.
@@ -59,13 +62,13 @@ const screenshot = async filename => {
   const dismiss = page.getByRole('button', { name: 'Dismiss notification', exact: true });
   if (await dismiss.isVisible()) await dismiss.click();
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForFunction(() => [...document.querySelectorAll('.qr-stage img')].every(image => image.complete && image.naturalWidth));
+  await page.waitForFunction(() => [...document.querySelectorAll('.qr-preview img')].every(image => image.complete && image.naturalWidth));
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   await page.screenshot({ path: output + filename + '.png', fullPage: true });
 };
 const save = async method => {
   const responsePromise = page.waitForResponse(response => response.url().includes('/api/codes') && response.request().method() === method);
-  await page.locator('.preview-panel > button.primary').click();
+  await page.locator('#artwork-panel button.btn.primary').click();
   const response = await responsePromise;
   assert.equal(response.status(), method === 'POST' ? 201 : 200, await response.text());
   const saved = (await response.json()).code;
@@ -75,6 +78,11 @@ const save = async method => {
 const decode = async path => {
   const { data, info } = await sharp(path).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   return jsQR(new Uint8ClampedArray(data), info.width, info.height)?.data;
+};
+const openCode = async target => {
+  await target.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Codes', exact: true }).click();
+  await target.locator('.codes-table').getByRole('button', { name, exact: true }).click();
+  await target.getByLabel('Tracking link', { exact: true }).waitFor();
 };
 const checkRedirect = async (method, destination) => {
   const response = await request(base + '/q/' + code.slug, { method, redirect: 'manual', headers: { 'user-agent': phoneUA } });
@@ -103,18 +111,19 @@ try {
     assert.equal(await page.getByRole('button', { name: 'Sign in', exact: true }).count(), 0);
     assert.equal(await page.getByRole('button', { name: 'Sign out', exact: true }).count(), 0);
   }
-  await page.getByLabel('QR code name').fill(name);
+  await page.getByRole('button', { name: 'New code', exact: true }).first().click();
+  await page.getByLabel('Name', { exact: true }).fill(name);
   await page.getByLabel('Destination URL').fill(initial);
-  await page.getByLabel('Event or campaign').fill(event);
-  await page.getByLabel('Placement', { exact: false }).fill('Book table');
-  await page.getByRole('tab', { name: 'Design', exact: true }).click();
-  await page.getByRole('button', { name: 'After hours', exact: true }).click();
-  await page.getByRole('button', { name: 'Your logo', exact: true }).click();
-  await page.locator('input[type=file]').setInputFiles(output + 'upload-logo.png');
+  await page.getByLabel('Event', { exact: true }).fill(event);
+  await page.getByLabel('Placement', { exact: true }).fill('Book table');
+  await page.getByRole('group', { name: 'Presets' }).getByRole('button', { name: /After hours$/ }).click();
+  await page.getByRole('group', { name: 'Logo' }).getByRole('button', { name: 'Upload', exact: true }).click();
+  await page.getByLabel('Logo file').setInputFiles(output + 'upload-logo.png');
   await page.getByAltText('Uploaded logo', { exact: true }).waitFor();
-  await page.getByText('Advanced design', { exact: true }).click();
+  const styling = page.locator('summary', { hasText: 'More styling' });
+  await styling.click();
   await page.getByLabel('Frame caption', { exact: true }).fill('PICK UP YOUR MASTRA BOOK');
-  await page.getByText('Advanced design', { exact: true }).click();
+  await styling.click();
   code = await save('POST');
   const trackingLink = base + '/q/' + code.slug;
   assert.equal(await page.getByLabel('Tracking link', { exact: true }).inputValue(), trackingLink);
@@ -133,10 +142,8 @@ try {
       await fresh.request.get(base, { headers: { ...authHeaders, 'x-vercel-set-bypass-cookie': 'true' }, maxRedirects: 0 });
       const reopened = await fresh.newPage();
       await reopened.goto(base, { waitUntil: 'networkidle' });
-      await reopened.getByRole('button', { name: 'Your QR codes', exact: true }).click();
-      await reopened.getByRole('button', { name, exact: true }).click();
+      await openCode(reopened);
       assert.equal(await reopened.getByLabel('Tracking link', { exact: true }).inputValue(), trackingLink);
-      await reopened.getByRole('tab', { name: 'Design', exact: true }).click();
       assert.equal(await reopened.getByAltText('Uploaded logo', { exact: true }).getAttribute('src'), code.design.logoData);
       assert.equal((await fresh.cookies()).some(cookie => cookie.name.startsWith('sb-') && cookie.name.includes('auth-token')), false, 'Private review must not create an app login session');
     } finally { await fresh.close(); }
@@ -144,18 +151,28 @@ try {
 
   // Reopen after a full browser reload to rule out a transient client-only logo.
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByRole('button', { name: 'Your QR codes', exact: true }).click();
-  await page.getByRole('button', { name, exact: true }).click();
-  await page.getByRole('tab', { name: 'Design', exact: true }).click();
+  await openCode(page);
   assert.equal(await page.getByAltText('Uploaded logo', { exact: true }).getAttribute('src'), code.design.logoData);
   const beforeDownloads = writes.length;
   for (const format of ['PNG', 'SVG', 'PDF']) {
     const pending = page.waitForEvent('download');
-    await page.getByRole('button', { name: format === 'PNG' ? 'Download PNG' : format, exact: true }).click();
+    await page.getByRole('button', { name: 'Download ' + format, exact: true }).click();
     const download = await pending;
     assert.equal(await download.failure(), null);
     await download.saveAs(output + 'export.' + format.toLowerCase());
   }
+  // Print-at-home sheet: the saved artwork on 3-inch labels, US Letter at physical size.
+  await page.getByRole('button', { name: 'Sticker sheet…', exact: true }).click();
+  const sticker = page.getByRole('dialog', { name: 'Print on a sticker sheet' });
+  const pendingSheet = page.waitForEvent('download');
+  await sticker.getByRole('button', { name: 'Download sheet PDF', exact: true }).click();
+  const sheet = await pendingSheet;
+  assert.equal(await sheet.failure(), null);
+  await sheet.saveAs(output + 'export.sticker-sheet.pdf');
+  await page.waitForFunction(() => !document.querySelector('.sticker-dialog button:disabled'));
+  await sticker.getByRole('button', { name: 'Close', exact: true }).click();
+  await sticker.waitFor({ state: 'detached' });
+  assert.match(execFileSync('pdfinfo', [output + 'export.sticker-sheet.pdf'], { encoding: 'utf8' }), /Page size:\s+612 x 792 pts/, 'Sticker sheets are US Letter');
   assert.equal(writes.length, beforeDownloads, 'Downloads cannot save or mutate the code');
   assert.equal(await decode(output + 'export.png'), trackingLink);
   assert.equal((await report()).totalScans, 0, 'Creating and exporting do not count as scans');
@@ -165,10 +182,9 @@ try {
 
   await checkRedirect('GET', initial);
   assert.equal((await report()).totalScans, 1);
-  await page.getByRole('tab', { name: 'Content', exact: true }).click();
   await page.getByLabel('Destination URL').fill(updated);
-  assert.equal(await page.locator('.preview-panel > button.primary').innerText(), 'Save changes');
-  for (const format of ['SVG', 'PDF']) assert.equal(await page.getByRole('button', { name: format, exact: true }).isDisabled(), true);
+  assert.equal(await page.locator('#artwork-panel button.btn.primary').innerText(), 'Save changes');
+  for (const label of ['Download SVG', 'Download PDF', 'Sticker sheet…']) assert.equal(await page.getByRole('button', { name: label, exact: true }).isDisabled(), true);
   await checkRedirect('HEAD', initial);
   assert.equal((await report()).totalScans, 1, 'HEAD must not count and unsaved edits must not change the redirect');
   const saved = await save('PATCH');
@@ -188,26 +204,25 @@ try {
   assert.equal(finalReport.recent.length, 2);
   assert.equal((await record()).scans, 2);
 
-  await page.getByRole('button', { name: 'Scan analytics', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Results', exact: true }).click();
   await page.getByLabel('Filter analytics by event', { exact: true }).selectOption(event);
   const reportResponse = page.waitForResponse(response => response.url().includes('/api/analytics?') && response.url().includes('codeId=' + code.id));
   await page.getByLabel('Filter analytics by QR code', { exact: true }).selectOption(code.id);
   assert.equal((await (await reportResponse).json()).totalScans, 2);
-  const total = page.locator('.stat-card').filter({ hasText: 'Total scans' }).locator('strong');
-  await total.getByText('2', { exact: true }).waitFor();
+  await page.locator('.kpis [data-metric=scans] dd').getByText('2', { exact: true }).waitFor();
   await screenshot('analytics-desktop');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel('Break down scans by', { exact: false }).selectOption('device');
-  assert.equal(await page.locator('#scan-breakdowns > div:visible .bar-row strong').innerText(), '2');
+  await page.getByRole('group', { name: 'Break down scans by', exact: true }).getByRole('button', { name: 'Device', exact: true }).click();
+  const scanPlaces = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Where scans came from', exact: true }) });
+  assert.deepEqual(await scanPlaces.locator('.bar-value').allTextContents(), ['2']);
   await screenshot('analytics-mobile');
   await page.setViewportSize({ width: 1440, height: 1050 });
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByRole('button', { name: 'Your QR codes', exact: true }).click();
-  await page.getByRole('button', { name, exact: true }).click();
+  await openCode(page);
   assert.equal(await page.getByLabel('Destination URL').inputValue(), updated);
   assert.equal(await page.getByLabel('Tracking link', { exact: true }).inputValue(), trackingLink);
   assert.deepEqual(errors, [], 'No browser runtime errors');
-  await fs.writeFile(output + 'workflow-report.json', JSON.stringify({ passed: true, trackingLink, uploadedLogo: { width: logo.width, height: logo.height }, destinationBefore: initial, destinationAfter: updated, downloads: ['PNG', 'SVG', 'PDF'], countedVisits: 2, device: 'Mobile', geography: hosted ? 'Approximate hosting-provider location' : 'Unknown (local review)', browserErrors: errors }, null, 2));
+  await fs.writeFile(output + 'workflow-report.json', JSON.stringify({ passed: true, trackingLink, uploadedLogo: { width: logo.width, height: logo.height }, destinationBefore: initial, destinationAfter: updated, downloads: ['PNG', 'SVG', 'PDF', 'Sticker sheet PDF'], countedVisits: 2, device: 'Mobile', geography: hosted ? 'Approximate hosting-provider location' : 'Unknown (local review)', browserErrors: errors }, null, 2));
 } catch (error) {
   await page.screenshot({ path: output + 'workflow-failure.png', fullPage: true }).catch(() => {});
   throw error;
@@ -221,4 +236,4 @@ try {
     }
   } finally { await browser.close(); }
 }
-console.log('PASS: create, real logo upload, save/reopen, three downloads, stable destination change, two attributed visits, desktop/mobile analytics, and archival retaining history. Exact operator cleanup is recorded in fixture-cleanup-<code-id>.json. Account setup untouched.');
+console.log('PASS: create, real logo upload, save/reopen, three downloads plus a Letter sticker sheet, stable destination change, two attributed visits, desktop/mobile analytics, and archival retaining history. Exact operator cleanup is recorded in fixture-cleanup-<code-id>.json. Account setup untouched.');

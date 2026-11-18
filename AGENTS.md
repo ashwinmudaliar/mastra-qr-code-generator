@@ -17,7 +17,7 @@ This repository contains a Next.js QR editor on Vercel with Supabase Postgres. I
 
 Use Mastra's kitchen-sink system: Greed Standard, Commit Mono, dark neutral surfaces, and green `#7aff78`. Follow the maintained design document rather than adding a new visual theme. Keep QR artwork contrast/quiet zones independent of the dark dashboard.
 
-Prefer literal task labels and concise explanations. Remove ornamental filler; do not add fake campaigns, metrics, success states, or controls without behavior. Distinguish direct design previews from saved tracking links, and private review from public event readiness. Report visits and approximate geography honestly; do not call them unique people, precise locations, or fulfilled orders.
+Prefer literal task labels and concise explanations. Remove ornamental filler; do not add fake campaigns, metrics, success states, or controls without behavior. Unsaved previews encode the `/q/draftpreview` placeholder, never the destination; keep them visibly distinct from saved tracking links, and keep private review distinct from public event readiness. Follow the rules at the top of [docs/DESIGN.md](docs/DESIGN.md): no text under 12 px at any width, each caveat stated once. Report visits and approximate geography honestly; do not call them unique people, precise locations, or fulfilled orders.
 
 All QR customization must be represented in real downloads. Keep high error correction, a four-module quiet zone, conservative logos, upload normalization, and decoder coverage when changing rendering.
 

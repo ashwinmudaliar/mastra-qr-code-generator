@@ -10,9 +10,9 @@ Supabase Auth is retained for a later login rollout. No signup, email confirmati
 
 - Dynamic links with editable destinations, pause/resume, optional expiry, and reversible archival that keeps scan and fulfillment history.
 - Logo uploads, colors and gradients, dot/corner styles, frames, and captions.
-- PNG, SVG, and PDF downloads using the saved tracking link.
+- PNG, SVG, and PDF downloads using the saved tracking link, plus print-at-home sticker sheets for 3″ square labels (six per US Letter sheet, PLS451 / Avery 94101 layout) with an alignment test page.
 - Event, book, placement, and UTM labels; bulk creation of up to 25 codes.
-- A searchable code library, event/book/code comparisons, daily scan reports, country/city/device summaries, and CSV exports.
+- Codes grouped by event, and Results that compare scans and book requests by event, code, or book, with daily scans, approximate scan locations, shipping destinations, and CSV exports.
 - Private Books attribution preview: signed QR visits connect to test book requests and simulated shipment/delivery results. Books production remains unchanged; no real books or emails are sent in this flow.
 
 A scan is a tracking-link visit, not a unique person or fulfilled order. Location is approximate. Use separate codes for reliable event attribution. Existing printed static QR codes do not automatically acquire tracking.
@@ -45,7 +45,7 @@ With the local development server running:
 QR_TEST_URL=http://127.0.0.1:3147 node scripts/verify-backend.mjs
 ```
 
-For a browser pass with that server running, install the test browser with `npx playwright install chromium --only-shell` and run `node scripts/audit-ui.mjs`. It checks saved exports and desktop/phone layouts and saves artifacts under ignored `outputs/design-audit/`. For a focused mobile readability pass, run `node scripts/audit-mobile.mjs`. It captures 320/360/390/430px layouts, checks minimum text/control sizes and page overflow, and saves results under ignored `outputs/mobile-readability/`.
+For a browser pass with that server running, install the test browser with `npx playwright install chromium --only-shell` and run `node scripts/audit-ui.mjs`. It checks saved exports and desktop/phone layouts and saves artifacts under ignored `outputs/design-audit/`. For a focused readability pass, run `node scripts/audit-mobile.mjs`. It captures 320/360/390/430/1100/1440px layouts, checks that no text is under 12px, text contrast, 44px controls on phones and page overflow, and saves results under ignored `outputs/mobile-readability/`. If the pinned Playwright browser isn't installed, set `QR_BROWSER_PATH` to another Chromium executable.
 
 The HTTP and browser checks create and archive their own temporary codes and record exact IDs for operator cleanup. Archiving keeps history; it is not permanent deletion. QR tests decode actual artwork, including logos, gradients, frames, and pattern combinations. `tests/rls.sql` and `tests/private-workspace-rls.sql` verify account/workspace access boundaries in transactions that roll back their fixtures; run both against the intended Supabase test project after schema changes.
 

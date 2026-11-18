@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
-import jsQR from 'jsqr';
+import { decodeExport } from './decode-export.mjs';
 import { archiveVerificationCode } from './archive-verification-code.mjs';
 
 assert.equal(process.argv.length, 2, 'Configure origins and the Studio bypass through environment variables only.');
@@ -257,8 +257,9 @@ try {
     assert.match(info, /Page size:\s+612 x 792 pts/);
     assert.match(info, /^Pages:\s+1\s*$/m);
     assert.equal(writes.length, beforeDownloads, 'Downloading must not save or mutate the code');
-    const png = await sharp(output + 'export.png').ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    assert.equal(jsQR(new Uint8ClampedArray(png.data), png.info.width, png.info.height)?.data, trackingLink);
+    const png = await decodeExport(output + 'export.png', trackingLink);
+    await fs.writeFile(output + 'png-decoding.json', JSON.stringify(png, null, 2));
+    assert.equal(png.matches, true, 'PNG must decode to the saved public link at 800, 1200, and 1600px');
     const logoSha256 = createHash('sha256').update(Buffer.from(code.design.logoData.split(',')[1], 'base64')).digest('hex');
     await fs.writeFile(output + 'expected.json', JSON.stringify({ trackingLink, logoSha256, files: ['export.png', 'export.svg', 'export.pdf'] }, null, 2));
     assert.equal((await report()).totalScans, 0, 'Creation and exports must not count as scans');

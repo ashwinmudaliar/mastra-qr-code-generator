@@ -30,6 +30,7 @@ export async function workspaceRequest<T>(payload: Record<string, unknown>): Pro
   const result = await response.json().catch(() => null);
   if (!response.ok) {
     if (response.status === 404) throw new ApiError(404, "This code was not found.");
+    if (response.status === 409) throw new ApiError(409, "Restore this archived code before editing it.");
     if (response.status === 400 || response.status === 413) throw new ApiError(response.status, "Check the supplied QR code settings.");
     throw new ApiError(503, "The private workspace is temporarily unavailable. Please try again.");
   }

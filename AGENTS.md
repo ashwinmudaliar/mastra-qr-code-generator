@@ -9,6 +9,7 @@ This repository contains a Next.js QR editor on Vercel with Supabase Postgres. I
 - Preserve remote history and existing user changes. Use `codex/` branches for feature work; do not force-push or merge unrelated work.
 - Maintain owner-scoped RLS and fixed-workspace filtering. Codes must have exactly one owner or private workspace; anonymous Data API access stays denied. Supabase user metadata is not an authorization boundary. Keep separate scan/workspace gateway credentials server-only.
 - Preserve saved QR slugs and printed-link behavior. Destination edits must not create a new slug; changing the hosting origin cannot update printed codes.
+- Archive codes instead of permanently deleting them. Preserve code IDs, scans, and fulfillment report scope; restore to paused. Keep permanent fixture cleanup outside application/gateway endpoints and target only exact operator-created records.
 - Keep local preview bypass restricted to development + explicit flag + loopback. It must never work in production.
 - Hosted account-free mode is separate: require its explicit private flag, Vercel preview environment, and generated deployment hostname. Vercel Deployment Protection is its authentication boundary; keep all deployments protected and verify unauthenticated API requests are blocked. Do not add signup or email setup as a prerequisite to this mode.
 

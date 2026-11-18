@@ -1,6 +1,7 @@
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { archiveVerificationCode } from './archive-verification-code.mjs';
 const base='http://127.0.0.1:3147';
 const dir=new URL('../outputs/mobile-readability/',import.meta.url).pathname;
 await fs.mkdir(dir,{recursive:true});
@@ -75,4 +76,4 @@ try{
  console.log(JSON.stringify({screens:findings.length,tiny,smallControls},null,2));
  assert.deepEqual(tiny,[],'Visible text must be at least 12px at mobile widths');
  assert.deepEqual(smallControls,[],'Enabled controls must be at least 44px tall');
-}finally{if(code)await fetch(base+'/api/codes/'+code.id,{method:'DELETE'});await browser.close();}
+}finally{try{if(code)await archiveVerificationCode({base,code,request:(path,options)=>fetch(base+path,options),output:dir});}finally{await browser.close();}}

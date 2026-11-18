@@ -4,6 +4,7 @@ export type GatewayCode = {
   destination: string;
   status: string;
   expires_at: string | null;
+  archived_at: string | null;
   utm: unknown;
   event: string;
   book: string;
@@ -88,7 +89,7 @@ export async function handleGateway(request: Request, dependencies: GatewayDepen
     const code = await dependencies.findCode(payload.slug);
     if (!code) return json({ error: "Code not found" }, 404);
     const now = dependencies.now?.() ?? Date.now();
-    if (code.status !== "active" || (code.expires_at !== null && (!Number.isFinite(Date.parse(code.expires_at)) || Date.parse(code.expires_at) <= now))) return json({ error: "Code unavailable" }, 410);
+    if (code.archived_at || code.status !== "active" || (code.expires_at !== null && (!Number.isFinite(Date.parse(code.expires_at)) || Date.parse(code.expires_at) <= now))) return json({ error: "Code unavailable" }, 410);
     const destination = redirectDestination(code);
     let recorded = false;
     let attribution = null;

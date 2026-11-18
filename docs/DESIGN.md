@@ -29,7 +29,7 @@ Keep three primary navigation destinations: Create a QR code, Your QR codes, and
 - **Create:** destination and a recognizable name first; optional event/book/placement labels afterward.
 - **Design:** keep presets, logo selection/upload, and Code color visible. Put logo size, background/corner colors, gradients, shapes, and caption-frame controls inside an advanced section that starts collapsed. Expanding or collapsing it must preserve all selected values. Every control must change the actual exported image.
 - **Tracking:** explain what is recorded; keep raw UTM fields inside an advanced campaign section that starts collapsed. Derive campaign/content defaults from event and placement. Expanding or collapsing settings must not change their values or disable tracking. Keep expiry subordinate to the main creation task.
-- **Library:** make edit, duplicate, pause, download, and the tracking link easy to find. Status must reflect expiry as well as active/paused state.
+- **Library:** make edit, duplicate, pause, download, and the tracking link easy to find. Archive replaces permanent deletion: the confirmation explains that printed links stop opening the destination while scan and fulfillment history remains. Hide archived codes in the default library and expose them through the Archived filter. Archived rows offer Restore and View analytics. Restoration keeps the original ID/link and returns the code paused; activating it is a separate action. Archived status takes precedence over expiry.
 - **Analytics:** keep Scans over time and event comparisons visible. Preserve book and code comparisons as well. On phones, a Country / City / Device selector shows one secondary breakdown at a time; on desktop, show all three breakdowns together. The selector must not hide the chart or campaign comparisons, change their data, or reset the period/event/code filters. Show real visits and real empty states. Never invent sample numbers to fill a chart.
 - **Fulfillment:** add a concise summary within Analytics, retaining the existing scan comparisons. Label preview results as simulated, expose test request controls through a link, and distinguish requests from book units. Shipping destinations are a separate breakdown from scan geography. Preserve the last successful report for matching filters during refresh failures; never turn an outage into zero results or show stale counts under new filters. Historical event labels remain selectable and visibly differ from current scan labels when relevant.
 
@@ -58,7 +58,7 @@ While saving or processing a logo, disable edits and draft-changing navigation s
 
 Use “scan” as a convenient label, with the meaning “tracking-link visit” available where reports are interpreted. Do not claim precise location, unique people, guaranteed scannability, or confirmed orders. “High error correction” describes a setting; “print-ready” must not replace a real scan test.
 
-During private review, state that event attendees need preview access. Do not imply that a private deployment is ready for public materials. Never regenerate a slug when editing, and warn before deleting a code whose printed copies will stop working.
+During private review, state that event attendees need preview access. Do not imply that a private deployment is ready for public materials. Never regenerate a slug when editing or restoring. Archived codes remain selectable in analytics, clearly labelled as archived, and remain included in historical totals.
 
 ## Review a visual change
 
@@ -66,7 +66,7 @@ Review the running UI at a desktop width, a narrow laptop width, and phone width
 
 1. New code, invalid input, saved code, and edited destination.
 2. Design controls with a real uploaded logo, gradients, and a long caption.
-3. Empty and populated library, filters with no matches, pause/expiry, and deletion.
+3. Empty and populated library, filters with no matches, pause/expiry, archival, retained analytics, and restoration to paused.
 4. Empty and populated analytics, long names, unknown geography, and export labels. On phones, switch Country / City / Device while keeping the chart and campaign comparisons available; on desktop, verify all three breakdowns remain visible.
 5. Sign-in, confirmation/error states, loading, and network failure.
 

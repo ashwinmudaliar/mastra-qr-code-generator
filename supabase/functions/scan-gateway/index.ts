@@ -12,7 +12,7 @@ Deno.serve((request: Request) => handleGateway(request, {
   keyHash: KEY_HASH,
   async findCode(slug) {
     const { data, error } = await db.from("qr_studio_codes")
-      .select("id,destination,status,expires_at,utm,event,book,placement").eq("slug", slug).maybeSingle();
+      .select("id,destination,status,expires_at,archived_at,utm,event,book,placement").eq("slug", slug).maybeSingle();
     if (error) throw new Error("Code lookup unavailable");
     return data;
   },

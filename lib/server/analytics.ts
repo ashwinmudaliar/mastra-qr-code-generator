@@ -8,8 +8,8 @@ export function destinationWithUTM(destination: string, utm: UTMSettings): strin
   }
   return url.toString();
 }
-export function isAvailable(code: Pick<QRCodeRecord, "status" | "expiresAt">, now = Date.now()) {
-  return code.status === "active" && (!code.expiresAt || new Date(code.expiresAt).getTime() > now);
+export function isAvailable(code: Pick<QRCodeRecord, "status" | "expiresAt"> & Partial<Pick<QRCodeRecord, "archivedAt">>, now = Date.now()) {
+  return !code.archivedAt && code.status === "active" && (!code.expiresAt || new Date(code.expiresAt).getTime() > now);
 }
 export function deviceFromUserAgent(ua: string): DeviceType {
   if (/ipad|tablet|kindle|silk/i.test(ua) || (/android/i.test(ua) && !/mobile/i.test(ua))) return "Tablet";

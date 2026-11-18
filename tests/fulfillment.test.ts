@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { FulfillmentReport, QRCodeRecord } from "../lib/types";
 import { fetchFulfillment, fulfillmentFilters, parseFulfillmentReport } from "../lib/server/fulfillment";
+import { report as previewReport, type StoredRequest } from "../supabase/functions/books-preview-gateway/core";
 
 const id = "11111111-1111-4111-8111-111111111111";
 const metrics = { requests: 1, booksRequested: 20, booksShipped: 20, deliveredOrders: 1, needsAttention: 0 };
@@ -52,4 +53,18 @@ test("outage, invalid endpoint or production response does not become an empty s
   const result = await fetchFulfillment("private", filters, { ...env, QR_BOOKS_REPORT_URL: "https://other.vercel.app/api/qr/report" }, async () => { calls++; return Response.json(report); });
   assert.equal(result.status, "unavailable"); assert.equal(calls, 0);
   assert.equal((await fetchFulfillment("supabase", filters, env)).status, "not_configured");
+});
+
+test("archiving preserves fulfilled totals and individual code/event reporting scope", () => {
+  const now = new Date("2026-11-18T12:00:00.000Z");
+  const code = { id, event: "Original event", status: "active", archivedAt: null } as QRCodeRecord;
+  const request = { attribution: { codeId: id, visitedAt: "2026-11-17T12:00:00.000Z", event: "Original event", book: "Both", placement: "Table" }, books: { Principles: 2, Patterns: 2 }, country: "United States", city: "Austin", status: "delivered", shippedAt: "2026-11-18T09:00:00.000Z", deliveredAt: "2026-11-18T11:00:00.000Z" } as StoredRequest;
+  const expected = { requests: 1, booksRequested: 4, booksShipped: 4, deliveredOrders: 1, needsAttention: 0 };
+  for (const archivedAt of [null, "2026-11-18T11:30:00.000Z"]) {
+    for (const query of ["", `?codeId=${id}&event=Original+event`]) {
+      const scoped = fulfillmentFilters(new URL(`https://studio.test/api/fulfillment${query}`), [{ ...code, archivedAt }], now);
+      assert.deepEqual(scoped.codeIds, [id]);
+      assert.deepEqual(previewReport([request], scoped, now.toISOString()).totals, expected);
+    }
+  }
 });

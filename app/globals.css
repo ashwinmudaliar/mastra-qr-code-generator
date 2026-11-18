@@ -211,3 +211,7 @@
   .qr-stage>.qr-preview{min-width:0;max-width:min(280px,100%)!important}
   .auth-intro>.eyebrow{font-size:12px;line-height:1.5;color:var(--muted)}
 }
+.status-pill.archived{background:#202020;border-color:#414141;color:var(--secondary)}
+.library-archive-note{font-size:14px;line-height:1.5;color:var(--muted);margin:-3px 0 18px}
+.row-actions>.archived-code-actions{display:flex;flex-wrap:wrap;gap:8px}
+.row-actions>.archived-code-actions button{min-height:44px;padding:8px;font-size:14px;line-height:1.4;color:var(--secondary)}

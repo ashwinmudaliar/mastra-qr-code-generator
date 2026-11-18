@@ -12,6 +12,8 @@ type View = "create" | "library" | "analytics" | "guide";
 type Tab = "content" | "design" | "tracking";
 const books = ["Both books", "Principles of Building AI Agents", "Patterns for Building AI Agents"];
 const initialForm = (): QRCodeInput => ({ name: "", destination: "https://www.mastrabooks.dev", event: "", book: "Both books", placement: "", status: "active", expiresAt: null, design: { ...DEFAULT_DESIGN }, utm: { enabled: true, source: "event", medium: "qr", campaign: "", content: "" } });
+const editableInput = (code: QRCodeRecord): QRCodeInput => ({ name: code.name, destination: code.destination, event: code.event, book: code.book, placement: code.placement, status: code.status, expiresAt: code.expiresAt, design: { ...code.design }, utm: { ...code.utm } });
+const codeLabel = (code: QRCodeRecord) => `${code.name}${code.archivedAt ? " (archived)" : ""}`;
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...options?.headers }, cache: "no-store" });
@@ -88,13 +90,14 @@ export default function Studio() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulk, setBulk] = useState("");
   const [bulkResult, setBulkResult] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<QRCodeRecord | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<QRCodeRecord | null>(null);
   const [exportSize, setExportSize] = useState("2048");
   const logoInput = useRef<HTMLInputElement>(null);
   const warnings = getDesignWarnings(form.design);
   const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(savedInput);
   const readyToDownload = Boolean(editing) && !hasUnsavedChanges;
-  const deleteDialog = useRef<HTMLDivElement>(null);
+  const archiveDialog = useRef<HTMLDivElement>(null);
+  const libraryFilter = useRef<HTMLSelectElement>(null);
   const analyticsQuery = `days=${days}${eventFilter ? `&event=${encodeURIComponent(eventFilter)}` : ""}${filterCode ? `&codeId=${encodeURIComponent(filterCode)}` : ""}`;
   const analyticsMatchesFilters = analyticsQueryKey === analyticsQuery;
 
@@ -124,11 +127,11 @@ export default function Studio() {
     return () => window.removeEventListener("beforeunload", guard);
   }, [hasUnsavedChanges]);
   useEffect(() => {
-    if (!deleteTarget) return;
+    if (!archiveTarget) return;
     const previous = document.activeElement as HTMLElement | null;
-    deleteDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    return () => previous?.focus();
-  }, [deleteTarget]);
+    archiveDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); else libraryFilter.current?.focus(); };
+  }, [archiveTarget]);
   useEffect(() => {
     const sidebar = sidebarRef.current;
     if (!sidebar) return;
@@ -154,13 +157,13 @@ export default function Studio() {
   function navigate(next: View) { if (busy) return; if (view === "create" && next !== "create" && hasUnsavedChanges) { if (!canDiscard()) return; setForm(savedInput); } setView(next); setError(""); if (next === "library") void loadCodes(); }
   function newCode() { if (!canDiscard()) return; const fresh = initialForm(); setForm(fresh); setSavedInput(fresh); setEditing(null); setTab("content"); setMobilePane("edit"); setView("create"); setError(""); }
   function editCode(code: QRCodeRecord) {
-    if (!canDiscard()) return;
-    const input: QRCodeInput = { name: code.name, destination: code.destination, event: code.event, book: code.book, placement: code.placement, status: code.status, expiresAt: code.expiresAt, design: { ...code.design }, utm: { ...code.utm } };
+    if (code.archivedAt || !canDiscard()) return;
+    const input = editableInput(code);
     setEditing(code); setForm(input); setSavedInput(input); setTab("content"); setMobilePane("edit"); setView("create"); setError("");
   }
   function duplicateCode(code: QRCodeRecord) {
     if (!canDiscard()) return;
-    const { id: _id, slug: _slug, createdAt: _created, updatedAt: _updated, scans: _scans, ...input } = code;
+    const input = editableInput(code);
     setEditing(null); setForm({ ...input, name: `${code.name} — copy`, status: "active", expiresAt: null }); setSavedInput(initialForm()); setTab("content"); setMobilePane("edit"); setView("create"); setError(""); setToast("Copy ready. Save it to create a new tracking link.");
   }
 
@@ -170,7 +173,7 @@ export default function Studio() {
     if (!["https:", "http:"].includes(url.protocol)) throw new Error("Use an https:// or http:// destination URL.");
     if (warnings.length) throw new Error(warnings[0]);
     const result = await api<{ code: QRCodeRecord }>(editing ? `/api/codes/${editing.id}` : "/api/codes", { method: editing ? "PATCH" : "POST", body: JSON.stringify({ ...form, name: form.name.trim(), utm: { ...form.utm, campaign: form.utm.campaign || campaignLabel(form.event), content: form.utm.content || campaignLabel(form.placement) } }) });
-    setEditing(result.code); const { id: _id, slug: _slug, createdAt: _created, updatedAt: _updated, scans: _scans, ...input } = result.code; setForm(input); setSavedInput(input); setCodes(old => [result.code, ...old.filter(c => c.id !== result.code.id)]); return result.code;
+    setEditing(result.code); const input = editableInput(result.code); setForm(input); setSavedInput(input); setCodes(old => [result.code, ...old.filter(c => c.id !== result.code.id)]); return result.code;
   }
   async function saveChanges() {
     setBusy(true); setError("");
@@ -180,10 +183,12 @@ export default function Studio() {
   }
 
   async function exportSaved(code: QRCodeRecord, format: ExportFormat = "png") {
+    if (code.archivedAt) return;
     setBusy(true); setError(""); try { await exportQR(`${origin}/q/${code.slug}`, code.design, { format, size: Number(exportSize), name: code.name }); setToast(`${format.toUpperCase()} downloaded.`); } catch (e) { setError(e instanceof Error ? e.message : "Download failed."); } finally { setBusy(false); }
   }
   async function copyLink(code: QRCodeRecord) { try { await navigator.clipboard.writeText(`${origin}/q/${code.slug}`); setToast("Tracking link copied."); } catch { setError("Clipboard access was blocked. Open the code editor and select its tracking link to copy it."); } }
   async function toggleStatus(code: QRCodeRecord) {
+    if (code.archivedAt) return;
     setBusy(true); setError("");
     try {
       const { code: updated } = await api<{ code: QRCodeRecord }>(`/api/codes/${code.id}`, { method: "PATCH", body: JSON.stringify({ status: code.status === "active" ? "paused" : "active" }) });
@@ -197,7 +202,28 @@ export default function Studio() {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not update the code."); }
     finally { setBusy(false); }
   }
-  async function removeCode() { if (!deleteTarget) return; setBusy(true); try { await api(`/api/codes/${deleteTarget.id}`, { method: "DELETE" }); setCodes(old => old.filter(c => c.id !== deleteTarget.id)); if (editing?.id === deleteTarget.id) { setEditing(null); setForm(initialForm()); setSavedInput(initialForm()); } setDeleteTarget(null); setToast("QR code deleted."); } catch (e) { setError(e instanceof Error ? e.message : "Could not delete the code."); } finally { setBusy(false); } }
+  async function archiveCode() {
+    if (!archiveTarget) return;
+    setBusy(true); setError("");
+    try {
+      const { code } = await api<{ code: QRCodeRecord }>(`/api/codes/${archiveTarget.id}`, { method: "DELETE" });
+      setCodes(old => old.map(item => item.id === code.id ? code : item));
+      if (editing?.id === code.id) { const fresh = initialForm(); setEditing(null); setForm(fresh); setSavedInput(fresh); }
+      setArchiveTarget(null); setToast("QR code archived. Scan and fulfillment history are kept.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not archive the code."); }
+    finally { setBusy(false); }
+  }
+  async function restoreCode(code: QRCodeRecord) {
+    setBusy(true); setError("");
+    try {
+      const { code: restored } = await api<{ code: QRCodeRecord }>(`/api/codes/${code.id}/restore`, { method: "POST", body: "{}" });
+      setCodes(old => old.map(item => item.id === restored.id ? restored : item));
+      setToast("QR code restored to Paused. Activate it when you’re ready.");
+      requestAnimationFrame(() => libraryFilter.current?.focus());
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not restore the code."); }
+    finally { setBusy(false); }
+  }
+  function viewCodeAnalytics(code: QRCodeRecord) { setEventFilter(""); setFilterCode(code.id); navigate("analytics"); }
   async function signOut() {
     if (!canDiscard()) return;
     setBusy(true); setError("");
@@ -214,7 +240,9 @@ export default function Studio() {
     setBulk(failed.join("\n")); setBulkResult(`${succeeded} code${succeeded === 1 ? "" : "s"} created.${failed.length ? ` ${failed.length} could not be saved; those rows are still here to retry.` : " Each has its own tracking link."}`); await loadCodes(); setBusy(false);
   }
   const codeLink = editing ? `${origin}/q/${editing.slug}` : form.destination;
-  const visibleCodes = codes.filter(code => (statusFilter === "all" || code.status === statusFilter) && `${code.name} ${code.event} ${code.book} ${code.placement}`.toLowerCase().includes(search.toLowerCase()));
+  const currentCodes = codes.filter(code => !code.archivedAt);
+  const onlyArchived = codes.length > 0 && !currentCodes.length && statusFilter === "all" && !search;
+  const visibleCodes = codes.filter(code => (statusFilter === "archived" ? !!code.archivedAt : !code.archivedAt && (statusFilter === "all" || code.status === statusFilter)) && `${code.name} ${code.event} ${code.book} ${code.placement}`.toLowerCase().includes(search.toLowerCase()));
 
   if (!session) return <div className="auth-layout"><div className="auth-card"><img src="/mastra-logo.svg" alt="Mastra" width="130" /><h1>QR Studio</h1><p role="status">{sessionError || "Getting your studio ready…"}</p>{sessionError && <button className="btn primary" onClick={() => void refreshSession()}>Try again</button>}</div></div>;
   if (!session.user) return <Auth session={session} onSignedIn={refreshSession} />;
@@ -224,13 +252,13 @@ export default function Studio() {
       <a className="brand" href="#" aria-disabled={busy} tabIndex={busy ? -1 : undefined} onClick={e => { e.preventDefault(); newCode(); }} aria-label="Mastra QR Studio home"><img src="/mastra-logo.svg" alt="Mastra" width="124" /><span>QR STUDIO</span></a>
       <div className="workspace-label">YOUR WORKSPACE <span>2027</span></div>
       <nav aria-label="Main navigation">
-        {[{ id: "create", label: "Create a QR code", shortLabel: "Create", icon: "plus" }, { id: "library", label: "Your QR codes", shortLabel: "QR codes", icon: "qr" }, { id: "analytics", label: "Scan analytics", shortLabel: "Analytics", icon: "chart" }].map(item => <button key={item.id} disabled={busy} aria-label={item.label} className={`nav-item ${view === item.id ? "active" : ""}`} onClick={() => navigate(item.id as View)}><Icon name={item.icon} /><span className="nav-label-full">{item.label}</span><span className="nav-label-short" aria-hidden="true">{item.shortLabel}</span>{item.id === "library" && <small>{codes.length}</small>}</button>)}
+        {[{ id: "create", label: "Create a QR code", shortLabel: "Create", icon: "plus" }, { id: "library", label: "Your QR codes", shortLabel: "QR codes", icon: "qr" }, { id: "analytics", label: "Scan analytics", shortLabel: "Analytics", icon: "chart" }].map(item => <button key={item.id} disabled={busy} aria-label={item.label} className={`nav-item ${view === item.id ? "active" : ""}`} onClick={() => navigate(item.id as View)}><Icon name={item.icon} /><span className="nav-label-full">{item.label}</span><span className="nav-label-short" aria-hidden="true">{item.shortLabel}</span>{item.id === "library" && <small>{currentCodes.length}</small>}</button>)}
       </nav>
       <div className="sidebar-bottom"><button disabled={busy} className={`nav-item ${view === "guide" ? "active" : ""}`} onClick={() => navigate("guide")}><Icon name="book" /><span>How it works</span><Icon name="chevron" size={14} /></button><div className="sidebar-user"><span className="avatar">M</span><div><strong>Mastra workspace</strong><small>{session.mode === "local" ? "Local preview" : session.user.email}</small></div>{session.mode === "supabase" && <button aria-label="Sign out" title="Sign out" className="button-link" disabled={busy} onClick={() => void signOut()}><Icon name="logout" size={17} /></button>}</div></div>
     </aside>
     <div className="main-wrap"><header className="topbar"><div className="breadcrumb"><span>Workspace</span><Icon name="chevron" size={13} /><strong>{{ create: "Create a QR code", library: "Your QR codes", analytics: "Scan analytics", guide: "How it works" }[view]}</strong></div><div className="topbar-status"><span className="status-dot" /> {session.mode === "local" ? "Local preview" : "Your private studio"}<button disabled={busy} className="topbar-help" aria-label="How tracking works" onClick={() => navigate("guide")}><Icon name="book" size={15} /></button>{session.mode === "supabase" && <button className="mobile-signout" aria-label="Sign out" disabled={busy} onClick={() => void signOut()}><Icon name="logout" size={15} /></button>}<span className="avatar">M</span></div></header>
     <main className="main">
-      {error && <div className="alert" role="alert">{error}<button className="button-link" aria-label="Dismiss error" onClick={() => setError("")}><Icon name="close" size={16} /></button></div>}
+      {error && !archiveTarget && <div className="alert" role="alert">{error}<button className="button-link" aria-label="Dismiss error" onClick={() => setError("")}><Icon name="close" size={16} /></button></div>}
       {view === "create" && <>
         <div className="page-heading"><div><h1>{editing ? "Edit QR code" : "Create a QR code"}</h1><p>Customize a code for your book, event, or campaign.</p></div>{editing && <button className="btn secondary" disabled={busy} onClick={newCode}><Icon name="plus" size={16} />New code</button>}</div>
         {session.booksPreviewOrigin && isBooksHome(form.destination) && <p className="books-preview-note">Saved Books QR links open the private test portal in this preview. No books or emails are sent.</p>}
@@ -284,16 +312,51 @@ export default function Studio() {
       </>}
       {view === "library" && <>
         <div className="page-heading"><div><h1>Your QR codes</h1><p>Manage destinations, campaigns, and scan activity.</p></div><button className="btn primary" disabled={busy} onClick={newCode}><Icon name="plus" size={17} />Create QR code</button></div>
-        <div className="library-toolbar"><div className="input-icon"><Icon name="search" size={18} /><input aria-label="Search QR codes" placeholder="Search by name, event, or book…" value={search} onChange={e => setSearch(e.target.value)} /></div><select aria-label="Filter QR code status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="paused">Paused</option></select><button className="btn secondary" disabled={!visibleCodes.length} onClick={() => downloadCSV("mastra-qr-codes.csv", [["Name", "Event", "Book", "Placement", "Status", "Scans", "Tracking link", "Destination"], ...visibleCodes.map(c => [c.name, c.event, c.book, c.placement, c.status, c.scans, `${origin}/q/${c.slug}`, c.destination])])}><Icon name="download" size={16} />Export CSV</button></div>
-        {loadingCodes ? <div className="empty-state" role="status">Loading your QR codes…</div> : !visibleCodes.length ? <div className="empty-state"><span className="icon-box"><Icon name="qr" size={30} /></span><h2>{codes.length ? "No matching codes." : "No QR codes yet."}</h2><p>{codes.length ? "Try another search or status filter." : "Create your first QR code. Give it a book, an event, and a destination."}</p><button className="btn primary" disabled={busy} onClick={codes.length ? () => { setSearch(""); setStatusFilter("all"); } : newCode}>{codes.length ? "Clear filters" : "Create your first code"}<Icon name="arrow" size={16} /></button></div> : <div className="library-table"><div className="table-head"><span>QR CODE</span><span>CAMPAIGN</span><span>SCANS</span><span>STATUS & ACTIONS</span></div>{visibleCodes.map(code => <div className="code-row" key={code.id}><div className="code-main"><QRPreview value={`${origin}/q/${code.slug}`} design={code.design} size={62} /><div><button className="button-link" disabled={busy} onClick={() => editCode(code)}><strong>{code.name}</strong></button><small>{code.book}</small><small>Created {fmtDate(code.createdAt)}</small></div></div><div className="code-campaign"><strong>{code.event || "No event"}</strong><small>{code.placement || "No placement"}</small></div><strong className="scan-count">{code.scans.toLocaleString()}</strong><div className="row-actions"><span className={`status-pill ${code.status}`}>{code.expiresAt && new Date(code.expiresAt).getTime() < Date.now() ? "Expired" : code.status}</span><div><button className="button-link" aria-label={`Edit ${code.name}`} title="Edit" disabled={busy} onClick={() => editCode(code)}><Icon name="edit" size={16} /></button><button className="button-link" aria-label={`Copy link for ${code.name}`} title="Copy link" onClick={() => void copyLink(code)}><Icon name="copy" size={16} /></button><button className="button-link" disabled={busy} aria-label={`Download ${code.name} as PNG`} title="Download PNG" onClick={() => void exportSaved(code)}><Icon name="download" size={16} /></button><select aria-label={`More actions for ${code.name}`} value="" disabled={busy} onChange={e => { if (e.target.value === "duplicate") duplicateCode(code); if (e.target.value === "pause") void toggleStatus(code); if (e.target.value === "analytics") { setEventFilter(code.event); setFilterCode(code.id); navigate("analytics"); } if (e.target.value === "delete") setDeleteTarget(code); }}><option value="">More</option><option value="duplicate">Duplicate</option><option value="pause">{code.status === "active" ? "Pause" : "Activate"}</option><option value="analytics">View analytics</option><option value="delete">Delete</option></select></div></div></div>)}</div>}
+        <div className="library-toolbar">
+          <div className="input-icon"><Icon name="search" size={18} /><input aria-label="Search QR codes" placeholder="Search by name, event, or book…" value={search} onChange={e => setSearch(e.target.value)} /></div>
+          <select ref={libraryFilter} aria-label="Filter QR code status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="all">Current codes</option><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select>
+          <button className="btn secondary" disabled={!visibleCodes.length} onClick={() => downloadCSV("mastra-qr-codes.csv", [["Name", "Event", "Book", "Placement", "Status", "Scans", "Tracking link", "Destination"], ...visibleCodes.map(c => [c.name, c.event, c.book, c.placement, c.archivedAt ? "Archived" : c.status, c.scans, `${origin}/q/${c.slug}`, c.destination])])}><Icon name="download" size={16} />Export CSV</button>
+        </div>
+        {statusFilter === "archived" && <p className="library-archive-note">Archived codes keep their scan and fulfillment history. Restore a code to Paused before activating it.</p>}
+        {loadingCodes ? <div className="empty-state" role="status">Loading your QR codes…</div> : !visibleCodes.length ?
+          <div className="empty-state">
+            <span className="icon-box"><Icon name="qr" size={30} /></span>
+            <h2>{onlyArchived ? "No current QR codes." : codes.length ? "No matching codes." : "No QR codes yet."}</h2>
+            <p>{onlyArchived ? "Your archived codes and their history are still available." : codes.length ? "Try another search or status filter." : "Create your first QR code. Give it a book, an event, and a destination."}</p>
+            <button className="btn primary" disabled={busy} onClick={onlyArchived ? () => setStatusFilter("archived") : codes.length ? () => { setSearch(""); setStatusFilter("all"); } : newCode}>{onlyArchived ? "View archived codes" : codes.length ? "Clear filters" : "Create your first code"}<Icon name="arrow" size={16} /></button>
+          </div> :
+          <div className="library-table">
+            <div className="table-head"><span>QR CODE</span><span>CAMPAIGN</span><span>SCANS</span><span>STATUS & ACTIONS</span></div>
+            {visibleCodes.map(code => <div className="code-row" key={code.id}>
+              <div className="code-main"><QRPreview value={`${origin}/q/${code.slug}`} design={code.design} size={62} /><div>
+                {code.archivedAt ? <strong>{code.name}</strong> : <button className="button-link" disabled={busy} onClick={() => editCode(code)}><strong>{code.name}</strong></button>}
+                <small>{code.book}</small><small>{code.archivedAt ? `Archived ${fmtDate(code.archivedAt)}` : `Created ${fmtDate(code.createdAt)}`}</small>
+              </div></div>
+              <div className="code-campaign"><strong>{code.event || "No event"}</strong><small>{code.placement || "No placement"}</small></div>
+              <strong className="scan-count">{code.scans.toLocaleString()}</strong>
+              <div className="row-actions">
+                <span className={`status-pill ${code.archivedAt ? "archived" : code.status}`}>{code.archivedAt ? "Archived" : code.expiresAt && new Date(code.expiresAt).getTime() < Date.now() ? "Expired" : code.status}</span>
+                {code.archivedAt ? <div className="archived-code-actions">
+                  <button className="button-link" aria-label={`Restore ${code.name}`} disabled={busy} onClick={() => void restoreCode(code)}>Restore</button>
+                  <button className="button-link" aria-label={`View analytics for ${code.name}`} disabled={busy} onClick={() => viewCodeAnalytics(code)}>View analytics</button>
+                </div> : <div>
+                  <button className="button-link" aria-label={`Edit ${code.name}`} title="Edit" disabled={busy} onClick={() => editCode(code)}><Icon name="edit" size={16} /></button>
+                  <button className="button-link" aria-label={`Copy link for ${code.name}`} title="Copy link" disabled={busy} onClick={() => void copyLink(code)}><Icon name="copy" size={16} /></button>
+                  <button className="button-link" disabled={busy} aria-label={`Download ${code.name} as PNG`} title="Download PNG" onClick={() => void exportSaved(code)}><Icon name="download" size={16} /></button>
+                  <select aria-label={`More actions for ${code.name}`} value="" disabled={busy} onChange={e => { if (e.target.value === "duplicate") duplicateCode(code); if (e.target.value === "pause") void toggleStatus(code); if (e.target.value === "analytics") viewCodeAnalytics(code); if (e.target.value === "archive") { setError(""); setArchiveTarget(code); } }}><option value="">More</option><option value="duplicate">Duplicate</option><option value="pause">{code.status === "active" ? "Pause" : "Activate"}</option><option value="analytics">View analytics</option><option value="archive">Archive</option></select>
+                </div>}
+              </div>
+            </div>)}
+          </div>}
+
       </>}
       {view === "analytics" && <>
-        <div className="page-heading"><div><div className="analytics-title"><h1>Scan analytics</h1><button className="btn secondary" aria-label="Refresh analytics" disabled={analyticsLoading || fulfillmentLoading} onClick={() => setAnalyticsRefresh(value => value + 1)}>{analyticsLoading || fulfillmentLoading ? "Refreshing…" : "Refresh"}</button></div><p>Compare QR visits and the book requests they lead to.</p></div><div className="heading-actions"><label><span>Event</span><select aria-label="Filter analytics by event" value={eventFilter} onChange={e => { setEventFilter(e.target.value); setFilterCode(""); }}><option value="">All events</option>{[...new Set([...codes.map(c => c.event), ...fulfillmentCampaigns.map(c => c.event), eventFilter].filter(Boolean))].sort().map(event => <option key={event}>{event}</option>)}</select></label><label><span>Period</span><select aria-label="Analytics period" value={days} onChange={e => setDays(e.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 365 days</option></select></label><label><span>QR code</span><select aria-label="Filter analytics by QR code" value={filterCode} onChange={e => setFilterCode(e.target.value)}><option value="">All QR codes</option>{codes.filter(code => !eventFilter || code.event === eventFilter || fulfillmentCampaigns.some(campaign => campaign.codeId === code.id && campaign.event === eventFilter)).map(code => <option key={code.id} value={code.id}>{code.name}</option>)}</select></label></div></div>
+        <div className="page-heading"><div><div className="analytics-title"><h1>Scan analytics</h1><button className="btn secondary" aria-label="Refresh analytics" disabled={analyticsLoading || fulfillmentLoading} onClick={() => setAnalyticsRefresh(value => value + 1)}>{analyticsLoading || fulfillmentLoading ? "Refreshing…" : "Refresh"}</button></div><p>Compare QR visits and the book requests they lead to.</p></div><div className="heading-actions"><label><span>Event</span><select aria-label="Filter analytics by event" value={eventFilter} onChange={e => { setEventFilter(e.target.value); setFilterCode(""); }}><option value="">All events</option>{[...new Set([...codes.map(c => c.event), ...fulfillmentCampaigns.map(c => c.event), eventFilter].filter(Boolean))].sort().map(event => <option key={event}>{event}</option>)}</select></label><label><span>Period</span><select aria-label="Analytics period" value={days} onChange={e => setDays(e.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 365 days</option></select></label><label><span>QR code</span><select aria-label="Filter analytics by QR code" value={filterCode} onChange={e => setFilterCode(e.target.value)}><option value="">All QR codes</option>{codes.filter(code => !eventFilter || code.event === eventFilter || fulfillmentCampaigns.some(campaign => campaign.codeId === code.id && campaign.event === eventFilter)).map(code => <option key={code.id} value={code.id}>{codeLabel(code)}</option>)}</select></label></div></div>
         {eventFilter && !codes.some(code => code.event === eventFilter) && fulfillmentCampaigns.some(campaign => campaign.event === eventFilter) && <p className="analytics-history-note">Fulfillment keeps the event label from submission. Scan reports use the code’s current label.</p>}
         {analyticsError && <div className="alert" role="alert">{analyticsError}</div>}{analyticsLoading && !analyticsMatchesFilters && <div className="empty-state" role="status">Gathering your scans…</div>}{analyticsMatchesFilters && analytics && <>
           <div className="stats-grid">{[{ label: "Total scans", value: analytics.totalScans, icon: "qr", note: "Visits to your tracking links" }, { label: "Active QR codes", value: analytics.activeCodes, icon: "link", note: "Available tracking links" }, { label: "Countries reached", value: analytics.countries, icon: "globe", note: "Approximate visitor location" }].map(stat => <div className="stat-card" key={stat.label}><div><span>{stat.label}</span><Icon name={stat.icon} size={19} /></div><strong>{stat.value.toLocaleString()}</strong><small>{stat.note}</small></div>)}</div>
           <section className="chart-card"><div className="card-heading"><div><h2>Scans over time</h2><p>Daily visits to your tracking links.</p></div><span className="status-pill">Daily · UTC</span></div><ScanChart days={analytics.byDay} /><div className="chart-labels"><span>{analytics.byDay[0]?.date}</span><span>{analytics.byDay.at(-1)?.date}</span></div><details className="daily-counts"><summary>View daily counts</summary><div className="recent-table"><table><thead><tr><th>Date (UTC)</th><th>Scans</th></tr></thead><tbody>{analytics.byDay.map(day => <tr key={day.date}><td>{day.date}</td><td>{day.scans.toLocaleString()}</td></tr>)}</tbody></table></div></details></section>
-          <div className="guide-grid campaign-breakdown"><Breakdown title="Scans by event" rows={analytics.byEvent} /><Breakdown title="Scans by book" rows={analytics.byBook} /><Breakdown title="Scans by code" rows={analytics.byCode.map(c => ({name:c.name,scans:c.scans}))} /></div>
+          <div className="guide-grid campaign-breakdown"><Breakdown title="Scans by event" rows={analytics.byEvent} /><Breakdown title="Scans by book" rows={analytics.byBook} /><Breakdown title="Scans by code" rows={analytics.byCode.map(c => ({name:codes.find(code => code.id === c.id)?.archivedAt ? `${c.name} (archived)` : c.name,scans:c.scans}))} /></div>
         </>}
         <FulfillmentSummary query={analyticsQuery} refresh={analyticsRefresh} revision={codes.map(code => `${code.id}:${code.updatedAt}`).join("|")} codes={codes} onLoadingChange={setFulfillmentLoading} onCampaignsLoaded={setFulfillmentCampaigns} />
         {analyticsMatchesFilters && analytics && <>
@@ -314,7 +377,13 @@ export default function Studio() {
       <footer className="footer"><span>Mastra books and events</span><span>MASTRA QR STUDIO <span>·</span> 2027</span></footer>
     </main></div>
     {toast && <div className="toast" role="status"><Icon name="check" size={18} />{toast}<button className="button-link" aria-label="Dismiss notification" onClick={() => setToast("")}><Icon name="close" size={16} /></button></div>}
-    {deleteTarget && <div className="modal-overlay" onClick={() => !busy && setDeleteTarget(null)}><div className="modal" ref={deleteDialog} onKeyDown={event => { if (event.key === "Escape" && !busy) setDeleteTarget(null); if (event.key === "Tab") { const buttons = deleteDialog.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"); if (buttons?.length) { const first = buttons[0]; const last = buttons[buttons.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } } }} role="alertdialog" aria-modal="true" aria-labelledby="delete-heading" onClick={e => e.stopPropagation()}><h2 id="delete-heading">Delete this QR code?</h2><p>“{deleteTarget.name}” and its scan history will be deleted. Printed copies of this code will stop opening the destination.</p><div className="form-actions"><button className="btn secondary" disabled={busy} onClick={() => setDeleteTarget(null)}>Keep code</button><button className="btn danger" disabled={busy} onClick={() => void removeCode()}>{busy ? "Deleting…" : "Delete code"}</button></div></div></div>}
+    {archiveTarget && <div className="modal-overlay" onClick={() => !busy && setArchiveTarget(null)}><div className="modal" ref={archiveDialog} onKeyDown={event => { if (event.key === "Escape" && !busy) setArchiveTarget(null); if (event.key === "Tab") { const buttons = archiveDialog.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"); if (buttons?.length) { const first = buttons[0]; const last = buttons[buttons.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } } }} role="alertdialog" aria-modal="true" aria-labelledby="archive-heading" aria-describedby="archive-description" onClick={e => e.stopPropagation()}>
+      <h2 id="archive-heading">Archive this QR code?</h2>
+      <p id="archive-description">Printed copies of “{archiveTarget.name}” will stop opening the destination. Its scan and fulfillment history will stay in your reports. You can restore the code later.</p>
+      {error && <p className="alert" role="alert">{error}</p>}
+      <div className="form-actions"><button className="btn secondary" disabled={busy} onClick={() => setArchiveTarget(null)}>Keep code</button><button className="btn danger" disabled={busy} onClick={() => void archiveCode()}>{busy ? "Archiving…" : "Archive code"}</button></div>
+    </div></div>}
+
   </div>;
 }
 

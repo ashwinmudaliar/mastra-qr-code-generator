@@ -5,7 +5,7 @@ import { codeInputSchema, codePatchSchema, normalizeDestination, parseInput, ass
 import { DEFAULT_DESIGN } from "../lib/qr-design";
 import type { QRCodeRecord, ScanRecord } from "../lib/types";
 
-const code:QRCodeRecord={id:"a",slug:"abcdefghijkl",name:"Books at Summit",destination:"https://www.mastrabooks.dev/?edition=2#books",event:"Summit",book:"Principles",placement:"Booth",status:"active",expiresAt:null,createdAt:"2027-01-01T00:00:00Z",updatedAt:"2027-01-01T00:00:00Z",scans:0,design:DEFAULT_DESIGN,utm:{enabled:true,source:"event",medium:"qr",campaign:"summit 2027",content:"principles"}};
+const code:QRCodeRecord={id:"a",slug:"abcdefghijkl",name:"Books at Summit",destination:"https://www.mastrabooks.dev/?edition=2#books",event:"Summit",book:"Principles",placement:"Booth",status:"active",expiresAt:null,archivedAt:null,createdAt:"2027-01-01T00:00:00Z",updatedAt:"2027-01-01T00:00:00Z",scans:0,design:DEFAULT_DESIGN,utm:{enabled:true,source:"event",medium:"qr",campaign:"summit 2027",content:"principles"}};
 const scan=(id:string,time:string,country="US",codeId="a"):ScanRecord=>({id,codeId,scannedAt:time,country,region:"CA",city:"San Francisco",device:"Mobile"});
 test("UTM attribution preserves existing query and hash and safely encodes campaign",()=>{
   const url=new URL(destinationWithUTM(code.destination,code.utm));
@@ -13,9 +13,10 @@ test("UTM attribution preserves existing query and hash and safely encodes campa
   assert.equal(url.searchParams.get("utm_campaign"),"summit 2027");
   assert.equal(destinationWithUTM(code.destination,{...code.utm,enabled:false}),code.destination);
 });
-test("pause and expiration stop redirects",()=>{
+test("pause, archive and expiration stop redirects",()=>{
   assert.equal(isAvailable(code,Date.parse("2027-02-01")),true);
   assert.equal(isAvailable({...code,status:"paused"}),false);
+  assert.equal(isAvailable({...code,archivedAt:"2027-01-01T00:00:00Z"}),false);
   assert.equal(isAvailable({...code,expiresAt:"2027-01-01T00:00:00Z"},Date.parse("2027-01-01")),false);
 });
 test("only public web destinations are accepted",()=>{
@@ -23,9 +24,9 @@ test("only public web destinations are accepted",()=>{
   assert.equal(normalizeDestination("https://www.mastrabooks.dev"),"https://www.mastrabooks.dev/");
 });
 test("schema rejects injected owner, script logos, malformed status and invalid expiry",()=>{
-  const{ id,slug,createdAt,updatedAt,scans,...input}=code;
+  const{ id,slug,createdAt,updatedAt,scans,archivedAt,...input}=code;
   assert.equal(parseInput(codeInputSchema,input).name,code.name);
-  for(const extra of [{owner_id:"someone-else"},{status:"deleted"},{expiresAt:"never"},{design:{...DEFAULT_DESIGN,logoData:"data:image/svg+xml;base64,PHN2Zz4="}}])assert.throws(()=>parseInput(codeInputSchema,{...input,...extra}));
+  for(const extra of [{owner_id:"someone-else"},{archivedAt:null},{archived_at:null},{status:"deleted"},{expiresAt:"never"},{design:{...DEFAULT_DESIGN,logoData:"data:image/svg+xml;base64,PHN2Zz4="}}])assert.throws(()=>parseInput(codeInputSchema,{...input,...extra}));
   assert.deepEqual(parseInput(codePatchSchema,{status:"paused"}),{status:"paused"});
   assert.throws(()=>parseInput(codePatchSchema,{}));
 });
@@ -56,6 +57,14 @@ test("event and book comparisons combine placements without mixing campaigns",()
   const report=aggregateAnalytics(codes,[scan("one","2027-01-03T01:00:00Z"),scan("two","2027-01-03T02:00:00Z","US","b"),scan("three","2027-01-03T03:00:00Z","DE","c")],7,new Date("2027-01-03T12:00:00Z"));
   assert.deepEqual(report.byEvent,[{name:"Summit",scans:2},{name:"Meetup",scans:1}]);
   assert.deepEqual(report.byBook,[{name:"Principles",scans:2},{name:"Patterns",scans:1}]);
+});
+
+test("archived codes retain scan totals and comparisons without counting as active",()=>{
+  const archived={...code,status:"paused" as const,archivedAt:"2027-01-03T10:00:00Z"};
+  const result=aggregateAnalytics([archived],[scan("before-archive","2027-01-03T02:00:00Z")],7,new Date("2027-01-03T12:00:00Z"));
+  assert.equal(result.activeCodes,0);assert.equal(result.totalScans,1);
+  assert.deepEqual(result.byCode,[{id:code.id,name:code.name,scans:1}]);
+  assert.equal(result.recent[0].codeName,code.name);
 });
 
 test("same-origin browser writes accept the request Host without trusting forwarded hosts",()=>{

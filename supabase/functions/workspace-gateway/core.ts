@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { codeInputSchema, codePatchSchema } from "../../../lib/server/validation";
-import type { WorkspaceStore } from "./store";
+import { ArchivedCodeError, type WorkspaceStore } from "./store";
 
 export type WorkspaceGatewayDependencies = {
   keyHash: string;
@@ -15,6 +15,7 @@ const payloadSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("create"), input: codeInputSchema }).strict(),
   z.object({ operation: z.literal("update"), id: uuid, input: codePatchSchema }).strict(),
   z.object({ operation: z.literal("delete"), id: uuid }).strict(),
+  z.object({ operation: z.literal("restore"), id: uuid }).strict(),
   z.object({ operation: z.literal("scans"), since: z.string().datetime({ offset: true }), until: z.string().datetime({ offset: true }), codeId: uuid.optional(), offset }).strict(),
 ]).refine(value => value.operation !== "scans" || (
   Date.parse(value.since) <= Date.parse(value.until) && Date.parse(value.until) - Date.parse(value.since) <= 367 * 86400000
@@ -70,10 +71,20 @@ export async function handleWorkspaceGateway(request: Request, dependencies: Wor
         const code = await dependencies.store.update(scope, payload.id, payload.input);
         return code ? json({ code }) : json({ error: "Code not found" }, 404);
       }
-      case "delete": return await dependencies.store.delete(scope, payload.id) ? json({ ok: true }) : json({ error: "Code not found" }, 404);
+      // Existing protected deployments may still send delete. Archive for every
+      // caller so none can erase a code's reporting identity or scan history.
+      case "delete": {
+        const code = await dependencies.store.archive(scope, payload.id);
+        return code ? json({ code }) : json({ error: "Code not found" }, 404);
+      }
+      case "restore": {
+        const code = await dependencies.store.restore(scope, payload.id);
+        return code ? json({ code }) : json({ error: "Code not found" }, 404);
+      }
       case "scans": return json({ scans: await dependencies.store.scans(scope, payload) });
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof ArchivedCodeError) return json({ error: "Restore this archived code before editing it." }, 409);
     dependencies.onError?.();
     return json({ error: "Workspace service temporarily unavailable" }, 503);
   }

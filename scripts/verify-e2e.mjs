@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import jsQR from 'jsqr';
+import { archiveVerificationCode } from './archive-verification-code.mjs';
 
 const args = process.argv.slice(2);
 const hosted = args[0] === '--private-preview';
@@ -213,12 +214,11 @@ try {
 } finally {
   try {
     if (code) {
-      const response = await request(base + '/api/codes/' + code.id, { method: 'DELETE', headers: { 'Content-Type': 'application/json', Origin: base } });
-      assert.equal(response.status, 200, 'Temporary code cleanup failed');
-      assert.equal((await api('/api/codes')).codes.some(item => item.id === code.id), false);
-      const removedReport = await request(base + '/api/analytics?days=30&codeId=' + code.id);
-      assert.equal(removedReport.status, 404, 'Removed code must no longer expose a report');
+      const beforeArchive = await report();
+      await archiveVerificationCode({ base, code, request: (path, options) => request(base + path, options), output });
+      assert.equal((await report()).totalScans, beforeArchive.totalScans, 'Archived code reports retain scan history');
+      assert.equal((await request(base + '/q/' + code.slug, { redirect: 'manual' })).status, 410, 'Archived links stop new visits');
     }
   } finally { await browser.close(); }
 }
-console.log('PASS: create, real logo upload, save/reopen, three downloads, stable destination change, two attributed visits, desktop/mobile analytics, and fixture cleanup. Account setup untouched.');
+console.log('PASS: create, real logo upload, save/reopen, three downloads, stable destination change, two attributed visits, desktop/mobile analytics, and archival retaining history. Exact operator cleanup is recorded in fixture-cleanup-<code-id>.json. Account setup untouched.');

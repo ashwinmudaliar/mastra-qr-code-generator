@@ -31,7 +31,7 @@ Both functions keep Supabase's full-project server credential inside the Edge Fu
 
 ### Workspace gateway
 
-`workspace-gateway` supports code CRUD and scan retrieval for one workspace. Its deployed configuration fixes the workspace ID; callers cannot choose an owner, workspace, table, or arbitrary query. Its separate verifier must reject the scan key. Every database operation remains scoped to the configured workspace, including update/delete IDs and scan joins. Input validation and body limits apply before processing supported operations.
+`workspace-gateway` supports code creation, reading, editing, archival, restoration and scan retrieval for one workspace. Its legacy `delete` operation archives so older preview clients cannot permanently remove history. Its deployed configuration fixes the workspace ID; callers cannot choose an owner, workspace, table, or arbitrary query. Its separate verifier must reject the scan key. Every database operation remains scoped to the configured workspace, including archive/restore IDs and scan joins. Input validation and body limits apply before processing supported operations.
 
 Use `supabase/functions/workspace-gateway/index.ts` as the entrypoint and `supabase/functions/workspace-gateway/deno.json` as the import map. Preserve these repository-relative paths in the deployment bundle:
 
@@ -50,7 +50,7 @@ The gateway's service credential bypasses RLS, so those explicit filters are ess
 
 `scan-gateway` resolves a single code by its random slug and optionally records a coarse visit. It cannot list or edit codes or read analytics. In `functions/scan-gateway/index.ts`, replace `__SCAN_GATEWAY_KEY_SHA256__` with the digest in memory and upload `index.ts`, `core.ts`, and `deno.json` together.
 
-It bounds requests to 4 KB, validates metadata, honors pause/expiry, and returns one destination plus bounded code/visit metadata when a visit was successfully recorded. Only the authenticated Next.js server receives this metadata and can sign the optional Books reference. A scan-storage error is logged without request payload data and does not interrupt a valid redirect. It records UTC time, approximate Vercel country/region/city, and device category, without retaining raw IP addresses or full user agents. Known crawlers, prefetches, and HEAD requests are excluded; counts are link visits.
+It bounds requests to 4 KB, validates metadata, honors archive/pause/expiry, and returns one destination plus bounded code/visit metadata when a visit was successfully recorded. Only the authenticated Next.js server receives this metadata and can sign the optional Books reference. A scan-storage error is logged without request payload data and does not interrupt a valid redirect. It records UTC time, approximate Vercel country/region/city, and device category, without retaining raw IP addresses or full user agents. Known crawlers, prefetches, and HEAD requests are excluded; counts are link visits.
 
 ### Books preview gateway
 

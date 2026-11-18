@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import sharp from 'sharp';
 import jsQR from 'jsqr';
+import { archiveVerificationCode } from './archive-verification-code.mjs';
 const base='http://127.0.0.1:3147';
 const out=new URL('../outputs/design-audit/',import.meta.url).pathname;
 await fs.mkdir(out,{recursive:true});
@@ -158,4 +159,4 @@ try{
  assert.deepEqual(errors,[],'No browser runtime errors');
  console.log('Browser checks passed: integrated presets, collapsed controls with keyboard/value retention, Save/Download transitions, read-only PNG/SVG/PDF export (PNG decoded), dirty export prevention, library, filters, mobile breakdown selection with actual counts, scan report, mobile editing/saving, desktop/laptop/mobile overflow.');
 }catch(e){await page.screenshot({path:out+'failure.png',fullPage:true});throw e;}
-finally{if(code){const r=await fetch(base+'/api/codes/'+code.id,{method:'DELETE'});assert.equal(r.status,200);console.log('Temporary UI test code removed.');}await browser.close();}
+finally{try{if(code)await archiveVerificationCode({base,code,request:(path,options)=>fetch(base+path,options),output:out});}finally{await browser.close();}}

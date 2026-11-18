@@ -17,6 +17,8 @@ Choose the relevant reference rather than loading every document:
 
 Inspect the current implementation and applicable tests before editing. Preserve saved slugs and the definition of scan metrics. A decorative preview is insufficient: exported QR artwork must represent all styling and decode to the intended saved link.
 
+Keep archived identities in scan and fulfillment reporting. Archival stops redirects and editing; restoration preserves identity and leaves the code paused. Do not reintroduce permanent deletion through a browser or gateway cleanup shortcut.
+
 Keep the three access modes distinct: local loopback review, protected Vercel private workspace, and Supabase account sessions. Private preview does not require signup or email setup. Preserve workspace filters and the exactly-one-owner constraint; never grant anonymous database access to avoid a login screen. When introducing account login, follow the ownership-transfer and credential-retirement steps in Maintenance so saved links and scan history survive.
 
 For a bug, establish a failing behavior or concrete state, then verify the repaired outcome. For a UI change, inspect desktop and phone widths plus relevant empty, error, loading, and saved states. Distinguish observed problems from suggested future work.

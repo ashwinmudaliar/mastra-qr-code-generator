@@ -4,7 +4,7 @@ import { handleGateway, sha256, redirectDestination, type GatewayCode, type Gate
 
 const key = "unit-test-only-bearer-not-for-deployment-123456789";
 const metadata = { country: "US", region: "CA", city: "San Francisco", device: "Mobile" };
-const code: GatewayCode = { id: "fixture-code", destination: "https://www.mastrabooks.dev/?book=both#claim", status: "active", expires_at: null, event: "AI Engineer 2027", book: "Both", placement: "Book table", utm: { enabled: true, source: "event", medium: "qr", campaign: "ai-engineer-2027", content: "book table" } };
+const code: GatewayCode = { id: "fixture-code", destination: "https://www.mastrabooks.dev/?book=both#claim", status: "active", expires_at: null, archived_at: null, event: "AI Engineer 2027", book: "Both", placement: "Book table", utm: { enabled: true, source: "event", medium: "qr", campaign: "ai-engineer-2027", content: "book table" } };
 function request(body: unknown = { slug: "abc123def456", count: true, metadata }, bearer = key) {
   return new Request("https://example.supabase.co/functions/v1/scan-gateway", { method: "POST", headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
@@ -33,8 +33,8 @@ test("authenticated scan returns destination with preserved query/hash and recor
 test("HEAD/prefetch equivalents resolve without recording", async () => {
   const c=await context();const result=await handleGateway(request({slug:"abc123def456",count:false,metadata}),c.dependencies);assert.equal(result.status,200);const body=await result.json();assert.equal(body.recorded,false);assert.equal(body.attribution,null);assert.deepEqual(c.counts(),{lookups:1,writes:0});
 });
-test("paused and expired codes never insert scans or disclose destination", async () => {
-  for(const variant of [{...code,status:"paused"},{...code,expires_at:"2026-11-17T12:00:00Z"}]) {const c=await context({findCode:async()=>variant});const result=await handleGateway(request(),c.dependencies);assert.equal(result.status,410);assert.equal(c.counts().writes,0);assert.equal((await result.json()).destination,undefined);}
+test("paused, archived and expired codes never insert scans or disclose destination", async () => {
+  for(const variant of [{...code,status:"paused"},{...code,archived_at:"2026-11-17T12:00:00Z"},{...code,expires_at:"2026-11-17T12:00:00Z"}]) {const c=await context({findCode:async()=>variant});const result=await handleGateway(request(),c.dependencies);assert.equal(result.status,410);assert.equal(c.counts().writes,0);assert.equal((await result.json()).destination,undefined);}
 });
 test("unknown code is 404 without scan writes", async () => {
   const c=await context({findCode:async()=>null});const result=await handleGateway(request(),c.dependencies);assert.equal(result.status,404);assert.equal(c.counts().writes,0);

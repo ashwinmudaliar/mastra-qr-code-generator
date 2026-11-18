@@ -33,8 +33,11 @@ begin
   if not found then raise exception 'Authenticated owner lost update access'; end if;
   update public.qr_studio_codes set name='Unauthorized' where id='10000000-0000-4000-8000-000000000012';
   if found then raise exception 'Private workspace update succeeded'; end if;
-  delete from public.qr_studio_codes where id='10000000-0000-4000-8000-000000000012';
-  if found then raise exception 'Private workspace delete succeeded'; end if;
+  begin
+    delete from public.qr_studio_codes where id='10000000-0000-4000-8000-000000000012';
+    raise exception 'Browser role retained permanent-delete privilege';
+  exception when insufficient_privilege then null;
+  end;
   begin
     perform 1 from public.qr_studio_workspaces;
     raise exception 'Private workspace metadata exposed';

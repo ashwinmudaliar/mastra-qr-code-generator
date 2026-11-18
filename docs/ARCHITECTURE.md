@@ -12,7 +12,9 @@ Vercel protection is the access boundary in this mode; the environment and hostn
 
 Vercel holds separate random bearer keys for the scan and workspace gateways. Each deployed function holds its key's SHA-256 verifier; Supabase's built-in full-project credential stays inside the Edge Function runtime. The scan gateway cannot list codes, edit them, or retrieve reports. The workspace gateway supports only management operations for its fixed workspace. Unsubstituted verifier/configuration placeholders fail closed. A direct service-role scan implementation remains an optional alternative, not the preferred deployment.
 
-A scan-storage failure must not strand a visitor: a valid destination still redirects, with a server-side error logged. Lookup failure returns an unavailable page rather than an invented destination. Paused/expired codes return `410`; unknown codes return `404`.
+A scan-storage failure must not strand a visitor: a valid destination still redirects, with a server-side error logged. Lookup failure returns an unavailable page rather than an invented destination. Archived/paused/expired codes return `410`; unknown codes return `404`.
+
+Archival retains the code row and all scan references. `DELETE /api/codes/:id` and the gateway's legacy `delete` operation set `archived_at` and pause the code; neither permanently deletes it. `POST /api/codes/:id/restore` clears the archive marker and leaves the code paused. Ordinary updates exclude archived rows atomically, so a stale editor cannot reactivate them. All authorized code lists include archived identities for scan and fulfillment reporting; only the library's default presentation hides them. Browser roles cannot DELETE or TRUNCATE code rows. Exact synthetic-fixture purges are an operator-only maintenance action, not an application endpoint.
 
 ## Stored data
 

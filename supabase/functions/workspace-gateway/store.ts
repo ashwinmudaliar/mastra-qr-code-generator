@@ -5,17 +5,19 @@ import type { codeInputSchema, codePatchSchema } from "../../../lib/server/valid
 type Input = z.output<typeof codeInputSchema>;
 type Patch = z.output<typeof codePatchSchema>;
 export type CodeRow = Record<string, unknown>;
+export class ArchivedCodeError extends Error {}
 export type ScanQuery = { since: string; until: string; codeId?: string; offset: number };
 export type WorkspaceStore = {
   list: (workspaceId: string, offset: number) => Promise<CodeRow[]>;
   create: (workspaceId: string, input: Input) => Promise<CodeRow>;
   update: (workspaceId: string, id: string, input: Patch) => Promise<CodeRow | null>;
-  delete: (workspaceId: string, id: string) => Promise<boolean>;
+  archive: (workspaceId: string, id: string) => Promise<CodeRow | null>;
+  restore: (workspaceId: string, id: string) => Promise<CodeRow | null>;
   scans: (workspaceId: string, query: ScanQuery) => Promise<Record<string, unknown>[]>;
 };
 
-const columns = "id,slug,name,destination,event,book,placement,status,expires_at,design,utm,created_at,updated_at";
-const withScans = "id,slug,name,destination,event,book,placement,status,expires_at,design,utm,created_at,updated_at,scans:qr_studio_scans(count)";
+const columns = "id,slug,name,destination,event,book,placement,status,expires_at,archived_at,design,utm,created_at,updated_at";
+const withScans = `${columns},scans:qr_studio_scans(count)`;
 function databaseError(error: unknown) { if (error) throw new Error("Workspace database request failed"); }
 function toRow(input: Input | Patch): Record<string, unknown> {
   // Validation permits editable fields only; still copy them explicitly here so
@@ -32,6 +34,21 @@ function randomSlug(): string {
 }
 
 export function createWorkspaceStore(db: SupabaseClient): WorkspaceStore {
+  async function scopedCode(workspaceId: string, id: string): Promise<CodeRow | null> {
+    const { data, error } = await db.from("qr_studio_codes").select(withScans)
+      .eq("private_workspace_id", workspaceId).is("owner_id", null).eq("id", id).maybeSingle();
+    databaseError(error); return data;
+  }
+  async function setArchived(workspaceId: string, id: string, archive: boolean): Promise<CodeRow | null> {
+    const now = new Date().toISOString();
+    let query = db.from("qr_studio_codes").update({ archived_at: archive ? now : null, status: "paused", updated_at: now })
+      .eq("private_workspace_id", workspaceId).is("owner_id", null).eq("id", id);
+    // Conditional writes preserve the original archive time on repeats. Restoring
+    // an already restored code never pauses a subsequently activated link.
+    query = archive ? query.is("archived_at", null) : query.not("archived_at", "is", null);
+    const { data, error } = await query.select(withScans).maybeSingle();
+    databaseError(error); return data ?? scopedCode(workspaceId, id);
+  }
   return {
     async list(workspaceId, offset) {
       const { data, error } = await db.from("qr_studio_codes").select(withScans)
@@ -47,14 +64,13 @@ export function createWorkspaceStore(db: SupabaseClient): WorkspaceStore {
     },
     async update(workspaceId, id, input) {
       const { data, error } = await db.from("qr_studio_codes").update({ ...toRow(input), updated_at: new Date().toISOString() })
-        .eq("private_workspace_id", workspaceId).is("owner_id", null).eq("id", id).select(withScans).maybeSingle();
-      databaseError(error); return data;
+        .eq("private_workspace_id", workspaceId).is("owner_id", null).eq("id", id).is("archived_at", null).select(withScans).maybeSingle();
+      databaseError(error);
+      if (!data && (await scopedCode(workspaceId, id))?.archived_at) throw new ArchivedCodeError("Restore this archived code before editing it.");
+      return data;
     },
-    async delete(workspaceId, id) {
-      const { data, error } = await db.from("qr_studio_codes").delete()
-        .eq("private_workspace_id", workspaceId).is("owner_id", null).eq("id", id).select("id");
-      databaseError(error); return Boolean(data?.length);
-    },
+    archive: (workspaceId, id) => setArchived(workspaceId, id, true),
+    restore: (workspaceId, id) => setArchived(workspaceId, id, false),
     async scans(workspaceId, query) {
       let request = db.from("qr_studio_scans")
         .select("id,code_id,scanned_at,country,region,city,device,qr_studio_codes!inner(private_workspace_id,owner_id)")

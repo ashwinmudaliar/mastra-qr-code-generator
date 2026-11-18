@@ -15,7 +15,7 @@ type ReportState = { query: string; response: FulfillmentResponse | null; error:
 type Comparison = FulfillmentMetrics & { key: string; name: string; detail: string };
 
 function comparisons(report: FulfillmentReport, group: "event" | "code", codes: QRCodeRecord[]): Comparison[] {
-  const names = new Map(codes.map(code => [code.id, code.name]));
+  const names = new Map(codes.map(code => [code.id, `${code.name}${code.archivedAt ? " (archived)" : ""}`]));
   const rows = new Map<string, Comparison>();
   for (const item of report.byCode) {
     // Attribution labels belong to the saved request, even after a code is edited.

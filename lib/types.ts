@@ -22,6 +22,7 @@ export type QRCodeInput = {
 export type QRCodeRecord = QRCodeInput & {
   id: string;
   slug: string;
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
   scans: number;

@@ -12,6 +12,7 @@ This integration is approved for private preview only. Books production code, da
 - Response: `{version:1,preview:boolean,updatedAt:string,totals:Metrics,byCode:CodeMetrics[],byCountry:Breakdown[],byCity:Breakdown[],coverage:{trackedRequests:number,untrackedDeliveryRequests:number}}`.
 - `Metrics`: `{requests:number,booksRequested:number,booksShipped:number,deliveredOrders:number,needsAttention:number}`. `CodeMetrics` adds `{codeId,event,book,placement}`; `Breakdown` adds `{name}`. Requests count logical durable submissions, not HTTP responses, retries, or shipment legs. Card packs are excluded from book units. Books' normalized shipment/delivery evidence remains authoritative. Unknown tracking is not a zero delivery claim.
 - QR Studio browser fetches `GET /api/fulfillment?days=30&event=...&codeId=...`; response wraps `{status:"connected"|"unavailable"|"not_configured",report:Report|null,previewOrigin?:string,message?:string}`. A failed refresh preserves the last successful browser report for matching filters with a stale warning.
+- Archived QR codes remain in the workspace's authorized report scope. Archiving stops new scans without changing request, book, shipment, or delivery totals. Restoring keeps the same code ID and slug and leaves it paused. The application does not permanently delete code identities or their history.
 
 ## Isolated preview storage
 

@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { DEFAULT_DESIGN } from "../lib/qr-design";
 import { handleWorkspaceGateway, type WorkspaceGatewayDependencies } from "../supabase/functions/workspace-gateway/core";
-import { createWorkspaceStore, type WorkspaceStore } from "../supabase/functions/workspace-gateway/store";
+import { ArchivedCodeError, createWorkspaceStore, type WorkspaceStore } from "../supabase/functions/workspace-gateway/store";
 
 const key = "unit-test-only-workspace-bearer-never-deploy-123456789";
 const workspaceId = "10000000-0000-4000-8000-000000000001";
@@ -25,7 +25,8 @@ function context(overrides: Partial<WorkspaceGatewayDependencies> = {}) {
     list: async () => { calls++; return []; },
     create: async (_scope, fields) => { calls++; return { id: codeId, ...fields }; },
     update: async () => { calls++; return null; },
-    delete: async () => { calls++; return false; },
+    archive: async () => { calls++; return null; },
+    restore: async () => { calls++; return null; },
     scans: async () => { calls++; return []; },
   };
   const dependencies: WorkspaceGatewayDependencies = { keyHash: createHash("sha256").update(key).digest("hex"), workspaceId, store, ...overrides };
@@ -60,6 +61,8 @@ test("workspace payload rejects caller-selected ownership, identities, unsafe de
     { operation: "create", input: { ...input, design: { ...input.design, logoData: "data:image/svg+xml,<svg onload='bad()'/>" } } },
     { operation: "update", id: codeId, input: { slug: "replacelink01" } },
     { operation: "update", id: codeId, input: {} },
+    { operation: "update", id: codeId, input: { archived_at: null } },
+    { operation: "restore", id: codeId, workspaceId: otherWorkspace },
     { operation: "delete", id: "../other" },
     { operation: "scans", offset: 0, since: "2027-01-01T00:00:00Z", until: "2026-01-01T00:00:00Z" },
     { operation: "scans", offset: 0, since: "2024-01-01T00:00:00Z", until: "2026-01-01T00:00:00Z" },
@@ -90,7 +93,7 @@ test("validated create and patch use the fixed workspace while missing or foreig
   const updated = await handleWorkspaceGateway(request({ operation: "update", id: codeId, input: { destination: "https://www.mastrabooks.dev/?updated=1", status: "paused" } }), c.dependencies);
   assert.equal(updated.status, 200); assert.equal((await updated.json()).code.slug, "stablelink01a");
   assert.ok(operations.every(operation => (operation as { scope: string }).scope === workspaceId));
-  for (const operation of ["update", "delete"]) {
+  for (const operation of ["update", "delete", "restore"]) {
     const response = await handleWorkspaceGateway(request({ operation, id: otherCodeId, ...(operation === "update" ? { input: { name: "Other" } } : {}) }), c.dependencies);
     assert.equal(response.status, 404); assert.deepEqual(await response.json(), { error: "Code not found" });
   }
@@ -99,8 +102,8 @@ test("validated create and patch use the fixed workspace while missing or foreig
 test("Supabase adapter scopes every read and mutation, preserves slug, and keeps scans scoped through their code", async () => {
   const requests: { method: string; url: URL; body: Record<string, unknown> | undefined }[] = [];
   const rows = [
-    { id: codeId, slug: "stablelink01a", private_workspace_id: workspaceId, owner_id: null, ...input },
-    { id: otherCodeId, slug: "foreignlink2b", private_workspace_id: otherWorkspace, owner_id: null, ...input },
+    { id: codeId, slug: "stablelink01a", private_workspace_id: workspaceId, owner_id: null, archived_at: null, ...input },
+    { id: otherCodeId, slug: "foreignlink2b", private_workspace_id: otherWorkspace, owner_id: null, archived_at: null, ...input },
   ];
   const db = createClient("https://fixture.supabase.co", "unit-test-only-not-a-real-service-key", {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -110,11 +113,12 @@ test("Supabase adapter scopes every read and mutation, preserves slug, and keeps
       requests.push({ method, url, body });
       const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { "Content-Type": "application/json" } });
       if (url.pathname.endsWith("qr_studio_scans")) return json([{ id: "scan", code_id: codeId, qr_studio_codes: { private_workspace_id: workspaceId, owner_id: null } }]);
-      if (method === "POST") { rows.push(body); return json(body); }
+      if (method === "POST") { rows.push({ archived_at: null, ...body }); return json({ archived_at: null, ...body }); }
       const matches = rows.filter(row => url.searchParams.get("private_workspace_id") === "eq." + row.private_workspace_id &&
-        (!url.searchParams.has("id") || url.searchParams.get("id") === "eq." + row.id));
+        (!url.searchParams.has("id") || url.searchParams.get("id") === "eq." + row.id) &&
+        (!url.searchParams.has("archived_at") || (url.searchParams.get("archived_at") === "is.null" ? row.archived_at === null : row.archived_at !== null)));
       if (method === "PATCH") { matches.forEach(row => Object.assign(row, body)); return json(matches[0] ?? null); }
-      if (method === "DELETE") return json(matches.map(({ id }) => ({ id })));
+      assert.notEqual(method, "DELETE", "Workspace application must never permanently delete codes");
       return json(matches);
     } },
   });
@@ -127,8 +131,21 @@ test("Supabase adapter scopes every read and mutation, preserves slug, and keeps
   const changed = await store.update(workspaceId, codeId, { destination: "https://www.mastrabooks.dev/?changed=1", status: "paused" });
   assert.equal(changed?.slug, "stablelink01a"); assert.equal(changed?.status, "paused");
   assert.equal(await store.update(workspaceId, otherCodeId, { name: "Unauthorized" }), null);
-  assert.equal(await store.delete(workspaceId, otherCodeId), false);
-  assert.equal(await store.delete(workspaceId, codeId), true);
+  assert.equal(await store.archive(workspaceId, otherCodeId), null);
+  assert.equal(await store.restore(workspaceId, otherCodeId), null);
+  const archived = await store.archive(workspaceId, codeId);
+  assert.ok(archived?.archived_at);
+  assert.equal(archived?.slug, "stablelink01a");
+  assert.equal(archived?.status, "paused");
+  assert.equal((await store.archive(workspaceId, codeId))?.archived_at, archived.archived_at, "Repeating archive preserves its timestamp");
+  await assert.rejects(() => store.update(workspaceId, codeId, { destination: "https://example.com/stale", status: "active" }), ArchivedCodeError);
+  assert.ok((await store.list(workspaceId, 0)).some(row => row.id === codeId && row.archived_at), "Archived IDs remain authorized for reports");
+  const restored = await store.restore(workspaceId, codeId);
+  assert.equal(restored?.archived_at, null);
+  assert.equal(restored?.slug, "stablelink01a");
+  assert.equal(restored?.status, "paused");
+  await store.update(workspaceId, codeId, { status: "active" });
+  assert.equal((await store.restore(workspaceId, codeId))?.status, "active", "Repeating restore does not pause an already reactivated code");
   const scans = await store.scans(workspaceId, { offset: 1000, since: "2026-11-01T00:00:00Z", until: "2026-11-18T00:00:00Z", codeId });
   assert.deepEqual(scans, [{ id: "scan", code_id: codeId }]);
   for (const captured of requests) {
@@ -155,4 +172,18 @@ test("workspace backend errors never expose database detail or credentials", asy
   const response = await handleWorkspaceGateway(request(), c.dependencies);
   assert.equal(response.status, 503); assert.equal(logged, true);
   assert.deepEqual(await response.json(), { error: "Workspace service temporarily unavailable" });
+});
+
+test("legacy delete archives and explicit restore are scoped; archived edits return a conflict", async () => {
+  const c = context();
+  const row = { id: codeId, slug: "stablelink01a", status: "paused", archived_at: "2026-11-18T12:00:00Z" };
+  c.dependencies.store.archive = async (scope, id) => { assert.equal(scope, workspaceId); assert.equal(id, codeId); return row; };
+  c.dependencies.store.restore = async (scope, id) => { assert.equal(scope, workspaceId); assert.equal(id, codeId); return { ...row, archived_at: null }; };
+  const archived = await handleWorkspaceGateway(request({ operation: "delete", id: codeId }), c.dependencies);
+  assert.equal(archived.status, 200); assert.deepEqual(await archived.json(), { code: row });
+  const restored = await handleWorkspaceGateway(request({ operation: "restore", id: codeId }), c.dependencies);
+  assert.equal(restored.status, 200); assert.deepEqual(await restored.json(), { code: { ...row, archived_at: null } });
+  c.dependencies.store.update = async () => { throw new ArchivedCodeError(); };
+  const stale = await handleWorkspaceGateway(request({ operation: "update", id: codeId, input: { status: "active" } }), c.dependencies);
+  assert.equal(stale.status, 409);
 });

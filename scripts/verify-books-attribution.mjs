@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { chromium, expect } from '@playwright/test';
+import { archiveVerificationCode } from './archive-verification-code.mjs';
 
 assert.equal(process.argv.length, 2, 'Configure preview URLs and bypass credentials through environment variables only.');
 function preview(name, pattern) {
@@ -219,6 +220,69 @@ try {
   await expect(page.getByRole('heading', { name: 'Scans over time', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Results by event', exact: true })).toBeVisible();
   await screenshot('analytics-mobile');
+
+  // Archive through the actual library: stopping a printed link must never
+  // remove the request and shipment evidence that it already generated.
+  await page.getByRole('button', { name: 'Your QR codes', exact: true }).click();
+  await page.getByLabel('More actions for ' + run, { exact: true }).selectOption('archive');
+  const archiveDialog = page.getByRole('alertdialog');
+  await expect(archiveDialog.getByRole('heading', { name: 'Archive this QR code?', exact: true })).toBeVisible();
+  await expect(archiveDialog).toContainText(/fulfillment history/i);
+  await page.setViewportSize({ width: 320, height: 844 });
+  await screenshot('archive-confirmation-mobile');
+  const archiveResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/codes/' + code.id && response.request().method() === 'DELETE');
+  await archiveDialog.getByRole('button', { name: 'Archive code', exact: true }).click();
+  assert.equal((await archiveResponse).status(), 200);
+  await expect(archiveDialog).toHaveCount(0);
+  await expect(page.locator('.code-row').filter({ hasText: run })).toHaveCount(0);
+  const archivedCode = (await json(qr, '/api/codes')).codes.find(item => item.id === code.id);
+  assert.ok(archivedCode?.archivedAt);
+  assert.equal(archivedCode.slug, code.slug);
+  assert.equal(archivedCode.scans, 1);
+  assert.equal((await request(qr, '/q/' + code.slug)).status, 410, 'Archived code must not redirect or record another visit');
+  assert.equal((await json(qr, '/api/analytics?days=30&codeId=' + code.id)).totalScans, 1);
+  assert.deepEqual((await report()).totals, finalMetrics, 'Archiving must retain the complete fulfillment history');
+  const archivedEvent = await json(qr, '/api/fulfillment?days=30&event=' + encodeURIComponent(event));
+  assert.deepEqual(archivedEvent.report.totals, finalMetrics, 'Event totals must still include archived codes');
+  const staleEdit = await request(qr, '/api/codes/' + code.id, { method: 'PATCH', body: JSON.stringify({ status: 'active' }) });
+  assert.equal(staleEdit.status, 409, 'Stale edits must not reactivate an archive');
+
+  await page.getByLabel('Filter QR code status', { exact: true }).selectOption('archived');
+  const archivedRow = page.locator('.code-row').filter({ hasText: run });
+  await expect(archivedRow.locator('.status-pill')).toHaveText(/archived/i);
+  await expect(archivedRow.getByRole('button', { name: 'Edit ' + run, exact: true })).toHaveCount(0);
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: width === 1440 ? 1050 : 844 });
+    await screenshot('archived-library-' + width);
+    if (width <= 390) {
+      const short = await archivedRow.locator('button,select').evaluateAll(controls => controls
+        .filter(control => control.getBoundingClientRect().width > 0 && control.getBoundingClientRect().height < 44)
+        .map(control => control.getAttribute('aria-label') || control.textContent));
+      assert.deepEqual(short, [], 'Archived code controls must remain usable on phones');
+    }
+  }
+  await archivedRow.getByRole('button', { name: 'View analytics for ' + run, exact: true }).click();
+  assert.equal(await page.getByLabel('Filter analytics by QR code', { exact: true }).inputValue(), code.id);
+  for (const [metric, value] of Object.entries(finalMetrics)) {
+    await expect(page.locator(`.fulfillment-metrics [data-metric="${metric}"] dd`)).toHaveText(String(value));
+  }
+  await screenshot('archived-analytics-desktop');
+  await page.getByRole('button', { name: 'Your QR codes', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const restoreResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/codes/' + code.id + '/restore' && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Restore ' + run, exact: true }).click();
+  const restored = await restoreResponse;
+  assert.equal(restored.status(), 200);
+  const restoredCode = (await restored.json()).code;
+  assert.equal(restoredCode.id, code.id);
+  assert.equal(restoredCode.slug, code.slug);
+  assert.equal(restoredCode.archivedAt, null);
+  assert.equal(restoredCode.status, 'paused');
+  assert.equal((await request(qr, '/q/' + code.slug)).status, 410, 'Restore keeps the link paused until explicitly activated');
+  assert.deepEqual((await report()).totals, finalMetrics, 'Restoring must not duplicate or change fulfillment totals');
+  await page.getByLabel('Filter QR code status', { exact: true }).selectOption('paused');
+  await expect(page.locator('.code-row').filter({ hasText: run }).locator('.status-pill')).toHaveText('paused');
+  await screenshot('restored-library-mobile');
   assert.deepEqual(blockedRequests, [], 'The connected flow must not navigate to production or mutate an unrelated service');
   assert.deepEqual(browserErrors, [], 'No browser runtime errors');
   completed = true;
@@ -249,18 +313,17 @@ try {
       code = listing.codes.find(candidate => candidate.name === run && candidate.event === event);
     }
     if (code) {
-      await json(qr, '/api/codes/' + code.id, { method: 'DELETE' });
-      const after = await json(qr, '/api/codes');
-      assert.equal(after.codes.some(item => item.id === code.id), false, 'Test code cleanup failed');
+      await archiveVerificationCode({ base: qr, code, request: (path, options) => request(qr, path, options), output });
     }
   } catch (error) { failures.push(error); }
   await browser?.close();
-  if (failures.length) throw new AggregateError(failures, 'Exact test fixture cleanup did not complete');
+  if (failures.length) throw new AggregateError(failures, 'Exact Books fixture cleanup or QR archival did not complete');
   if (completed) await fs.writeFile(output + 'workflow-report.json', JSON.stringify({
     passed: true, qrPreview: qr, booksPreview: books, requests: 1, booksRequested: 4, booksShipped: 4, deliveredOrders: 1,
     countedVisits: 1, transportReplay: 'same request', changedReplay: '409', invalidAttribution: 'saved unattributed',
     destinationEdit: 'stable slug', head: 'no attribution or scan', privateAccess: 'unsigned requests blocked',
-    fixtureCleanup: 'all exact request IDs and temporary QR removed', browserErrors, productionChanges: false, accountSetup: false,
+    archiveHistory: 'unchanged request, requested/shipped books, delivered order, and scan totals', restore: 'same identity and slug, paused',
+    fixtureCleanup: 'exact Books request IDs removed; QR archived for operator cleanup listed in fixture-cleanup-' + code.id + '.json', browserErrors, productionChanges: false, accountSetup: false,
   }, null, 2));
 }
-console.log('PASS: real QR → Books form → simulated shipped/delivered → QR analytics, replay protection, invalid attribution, stable destination, mobile/desktop, and exact fixture cleanup.');
+console.log('PASS: real QR → Books form → simulated shipped/delivered → QR analytics, archive retains fulfillment/scan history, restore stays paused, mobile/desktop. Books fixtures removed; exact QR operator cleanup recorded in fixture-cleanup-<code-id>.json.');

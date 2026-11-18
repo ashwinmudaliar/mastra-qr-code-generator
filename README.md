@@ -8,7 +8,7 @@ Supabase Auth is retained for a later login rollout. No signup, email confirmati
 
 ## What works
 
-- Dynamic links with editable destinations, pause/resume, and optional expiry.
+- Dynamic links with editable destinations, pause/resume, optional expiry, and reversible archival that keeps scan and fulfillment history.
 - Logo uploads, colors and gradients, dot/corner styles, frames, and captions.
 - PNG, SVG, and PDF downloads using the saved tracking link.
 - Event, book, placement, and UTM labels; bulk creation of up to 25 codes.
@@ -47,7 +47,7 @@ QR_TEST_URL=http://127.0.0.1:3147 node scripts/verify-backend.mjs
 
 For a browser pass with that server running, install the test browser with `npx playwright install chromium --only-shell` and run `node scripts/audit-ui.mjs`. It checks saved exports and desktop/phone layouts and saves artifacts under ignored `outputs/design-audit/`. For a focused mobile readability pass, run `node scripts/audit-mobile.mjs`. It captures 320/360/390/430px layouts, checks minimum text/control sizes and page overflow, and saves results under ignored `outputs/mobile-readability/`.
 
-The HTTP and browser checks create and remove their own temporary codes. QR tests decode actual artwork, including logos, gradients, frames, and pattern combinations. `tests/rls.sql` and `tests/private-workspace-rls.sql` verify account/workspace access boundaries in transactions that roll back their fixtures; run both against the intended Supabase test project after schema changes.
+The HTTP and browser checks create and archive their own temporary codes and record exact IDs for operator cleanup. Archiving keeps history; it is not permanent deletion. QR tests decode actual artwork, including logos, gradients, frames, and pattern combinations. `tests/rls.sql` and `tests/private-workspace-rls.sql` verify account/workspace access boundaries in transactions that roll back their fixtures; run both against the intended Supabase test project after schema changes.
 
 ## Project guide
 

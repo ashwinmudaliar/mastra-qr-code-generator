@@ -1,4 +1,4 @@
-import { handleScan } from "../lib/handler";
+import { handleScan } from "../lib/handler.js";
 
 export default {
   fetch(request: Request) {

@@ -98,6 +98,9 @@ try {
   await context.route('**/*', async route => {
     const req = route.request();
     const url = new URL(req.url());
+    // The protected deployment toolbar may validate its own Vercel session.
+    // It is not part of fulfillment; suppress it in this isolated test.
+    if (url.hostname === 'vercel.live') { await route.abort(); return; }
     // Never open the production portal or send a mutation outside the two previews.
     if (['mastrabooks.dev', 'www.mastrabooks.dev'].includes(url.hostname) ||
       (!roots.has(url.origin) && !['GET', 'HEAD', 'OPTIONS'].includes(req.method()))) {
@@ -172,7 +175,7 @@ try {
   const row = page.locator('article').filter({ hasText: receipt.orderId });
   await expect(row).toHaveCount(1);
   for (const status of ['shipped', 'delivered']) {
-    await row.getByLabel('Next test status', { exact: true }).selectOption(status);
+    await row.getByLabel(/Next test status/).selectOption(status);
     const transitioned = page.waitForResponse(response => new URL(response.url()).origin === books && new URL(response.url()).pathname === '/api/qr/preview' && response.request().method() === 'PATCH');
     await row.getByRole('button', { name: 'Apply test status', exact: true }).click();
     const response = await transitioned;

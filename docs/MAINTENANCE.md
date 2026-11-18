@@ -46,6 +46,8 @@ Configure the Books gateway, signing, and reporting keys independently. QR Studi
 
 Validate an actual hosted QR→Books submission→simulated shipped/delivered→QR Analytics flow, transport replay, invalid signatures, direct unattributed requests, access denial, and exact fixture cleanup. No production test order is required or authorized by this preview workflow. Account setup remains deferred.
 
+`node scripts/verify-books-attribution.mjs` performs that connected check. Supply the exact generated deployment origins through `QR_TEST_PREVIEW_URL` and `BOOKS_TEST_PREVIEW_URL`, and their separate automation credentials through `QR_TEST_PREVIEW_BYPASS` and `BOOKS_TEST_PREVIEW_BYPASS`. It refuses other hosts, scopes cookies/headers to the intended origin, uses fictional details, removes exact fixtures even after a failure, and writes ignored screenshots plus `outputs/books-attribution/workflow-report.json`. Never pass credentials in a URL. Its browser suppresses the optional Vercel feedback toolbar, which is unrelated to fulfillment.
+
 ## Deployment
 
 The current stack is Vercel + Supabase. Vercel Git integration is not connected during private review; deployments are manual, protected previews. The account-free workspace requires `QR_PRIVATE_PREVIEW=1` and a server-only `QR_WORKSPACE_GATEWAY_KEY`, both scoped to the Vercel preview environment. It uses durable Supabase storage; `QR_LOCAL_PREVIEW` must not be deployed. See [Supabase setup](../supabase/SETUP.md) for configuration and both scoped Edge Functions.

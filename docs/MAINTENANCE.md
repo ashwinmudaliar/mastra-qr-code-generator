@@ -72,6 +72,17 @@ Deploy only `scanner/`, linked to its own `mastra-qr-scanner` project. Its serve
 
 Attach only the selected scan subdomain, `qr.mastrabooks.dev`. The public origin must work without Vercel authentication; generated scanner previews may remain protected. Never add the public domain to Studio or remove Studio protection. Record the scanner deployment ID, source commit, domain/protection settings, and verified HTTP results before updating Studio’s export origin.
 
+With Git integration off, Vercel rejects branch-scoped project variables. Keep the two launch flags specific to the reviewed Studio deployment instead of changing every future preview. From the clean, linked Studio checkout, deploy with:
+
+```sh
+vercel deploy --scope ashwinm546 \
+  --build-env NEXT_PUBLIC_QR_SCAN_ORIGIN=https://qr.mastrabooks.dev \
+  --env NEXT_PUBLIC_QR_SCAN_ORIGIN=https://qr.mastrabooks.dev \
+  --env QR_PUBLIC_SCAN_ORIGIN=https://qr.mastrabooks.dev
+```
+
+This remains a protected preview, with no `--prod` or alias. Verify `/api/session` reports the same `publicScanOrigin` before testing exports. `scripts/verify-public-scanning.mjs` accepts `QR_TEST_PREVIEW_URL`, the host-scoped `QR_TEST_PREVIEW_BYPASS`, and `QR_TEST_SCAN_ORIGIN=https://qr.mastrabooks.dev`; it never submits a Books order. Follow with the independent export decoder on `outputs/public-scanning/expected.json`.
+
 Configure a distributed Vercel WAF fixed-window limit before public campaigns. The initial planned threshold is 600 requests per minute per IP, allowing for shared conference Wi-Fi; verify the deployed value and adjust using observed traffic. Test 429 behavior without writing scan fixtures by using a nonexistent slug. Scope the rule to this scanner project, and inspect the complete draft before publishing firewall changes. Monitor rejected requests alongside redirect/gateway errors.
 
 ## Adding account login later

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { handleScan, SUPABASE_PROJECT_ORIGIN, type ScannerDependencies } from "../scanner/lib/handler";
 
 const key = "unit-test-public-scan-bearer-not-a-live-secret-123456789";
@@ -26,13 +27,47 @@ function gateway(body: unknown = { destination, recorded: true }, status = 200) 
 
 test("public scanner exposes no management, source, function, or alternate slug paths", async () => {
   const fixture = gateway();
-  for (const path of ["/", "/api/session", "/api/codes", "/api/analytics", "/auth/callback", "/api/index", `/api/index?slug=${slug}`,
+  for (const path of ["/api/session", "/api/codes", "/api/analytics", "/auth/callback", "/api/index", `/api/index?slug=${slug}`,
     `/q/${slug}/`, "/q/short", `/q/${slug}/extra`, "/q/abc123def45%36", "/lib/handler.ts", "/package.json"]) {
     const response = await handleScan(request(path), fixture.dependencies);
     assert.equal(response.status, 404, path);
     assert.equal(response.headers.get("location"), null);
   }
   assert.equal(fixture.calls.length, 0, "Rejected paths must not reach storage");
+});
+
+test("the homepage redirects GET and HEAD to the fixed Studio without storage or query forwarding", async () => {
+  const fixture = gateway();
+  for (const method of ["GET", "HEAD"]) {
+    const response = await handleScan(request("/?next=https://attacker.example/&slug=foreign12345", {
+      method, headers: { "x-forwarded-host": "attacker.example", "x-original-url": "/api/codes" },
+    }), { ...fixture.dependencies, env: {} });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "https://mastra-qr-studio.vercel.app/");
+    assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
+    assert.equal(response.headers.get("cdn-cache-control"), "no-store");
+    assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+    assert.equal(await response.text(), "");
+  }
+  for (const method of ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"]) {
+    const response = await handleScan(request("/", { method }), fixture.dependencies);
+    assert.equal(response.status, 405);
+    assert.equal(response.headers.get("allow"), "GET, HEAD");
+    assert.equal(response.headers.get("location"), null);
+  }
+  assert.equal(fixture.calls.length, 0);
+  assert.deepEqual(fixture.failures, []);
+});
+
+test("Vercel routes only the homepage and valid scan paths to the function", async () => {
+  const config = JSON.parse(await readFile(new URL("../scanner/vercel.json", import.meta.url), "utf8"));
+  const routeFor = (path: string) => config.routes.find((route: { src: string }) => new RegExp(route.src).test(path));
+  for (const path of ["/", `/q/${slug}`, "/q/draftpreview"]) assert.equal(routeFor(path).dest, "/api/index");
+  for (const path of ["/api/index", "/api/codes", "/api/session", "/api/analytics", "/auth/callback", "/404.html", "/vercel.json", `/q/${slug}/`, "/q/short"]) {
+    assert.equal(routeFor(path).status, 404, path);
+    assert.equal(routeFor(path).headers["CDN-Cache-Control"], "no-store");
+  }
+  assert.equal(config.routes.some((route: { handle?: string }) => route.handle === "filesystem"), false);
 });
 
 test("only the pathname chooses the slug; queries and forwarded headers are ignored", async () => {

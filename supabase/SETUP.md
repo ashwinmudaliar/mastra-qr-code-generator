@@ -1,6 +1,37 @@
 # Supabase and Vercel setup
 
-The current private preview uses one persistent Supabase workspace without a QR Studio account. Vercel access protection gates the app. Supabase Auth remains available for a later login rollout; signup, email confirmation, and Auth URL configuration are not prerequisites for private review.
+The Google-login path is for one creator at the standard Vercel dashboard address. Older account-free previews use a persistent workspace behind Vercel protection. These are separate access modes; deploying this source does not configure Google or Supabase Auth automatically.
+
+## Google login
+
+Use a dedicated Google Cloud OAuth web client for QR Studio. Follow [Supabase's Google provider setup](https://supabase.com/docs/guides/auth/social-sign-in/auth-google) and keep the Books OAuth client unchanged. Use the Mastra organization's Internal audience where available and only basic identity scopes (`openid`, email and profile); the application's exact email check is what limits dashboard access to `ashwin@mastra.ai`.
+
+| Setting | Value |
+| --- | --- |
+| Google authorized JavaScript origin | `https://mastra-qr-studio.vercel.app` |
+| Google authorized redirect URI | `https://ltoyhqrorttppcitdwii.supabase.co/auth/v1/callback` |
+| Supabase Auth Site URL | `https://mastra-qr-studio.vercel.app` |
+| Supabase Auth redirect allowlist | `https://mastra-qr-studio.vercel.app/auth/callback` |
+
+Enable the Google provider with its client ID and client secret in Supabase Auth. Keep the secret in that provider configuration, never source, screenshots, URLs or browser environment variables. Do not use wildcard callback URLs, enable unrelated scopes, or configure email delivery for this Google-only flow.
+
+After Ashwin's first verified Google sign-in creates the intended Auth user, turn off **Allow new users to sign up** and disable the **Email** provider in Supabase, leaving Google enabled. Confirm the saved settings and that the existing account can sign in again while new-user signup is denied. [Supabase's signup setting](https://supabase.com/docs/guides/auth/general-configuration) allows existing users to continue signing in; close signup only after the intended user exists. Keep the application's exact-email check as an independent restriction.
+
+Configure Studio's production environment:
+
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | QR Studio's Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client-safe publishable key; never a service-role key |
+| `QR_GOOGLE_LOGIN=1` | Enables the Google-only path |
+| `QR_ADMIN_EMAILS=ashwin@mastra.ai` | Required exact-email allowlist, checked on every management request |
+| `QR_STUDIO_ORIGIN=https://mastra-qr-studio.vercel.app` | Required fixed HTTPS root for OAuth and same-origin checks |
+| `NEXT_PUBLIC_QR_SCAN_ORIGIN=https://qr.mastrabooks.dev` | Existing build-time public scan origin |
+| `QR_PUBLIC_SCAN_ORIGIN=https://qr.mastrabooks.dev` | Matching server confirmation of public-link mode |
+
+Omit private/local preview flags, the old workspace bearer and Books preview credentials from this production deployment. Google mode rejects private/local flags or missing/invalid auth configuration. It validates a confirmed Supabase email and server-established Google identity; editable profile metadata cannot grant access. Password/signup endpoints are disabled. Keep the existing owner RLS policies.
+
+Follow [the ordered rollout](../docs/MAINTENANCE.md#google-login-rollout): verify the real Google session while Studio is still Vercel-protected, transfer the existing workspace without changing code identities, restrict the public gateway to the owner, revoke the old management bearer, then verify the standard alias under app authentication. Generated URLs and previews remain Vercel-protected. Record actual deployment evidence separately from these setup instructions.
 
 ## Private workspace
 
@@ -24,7 +55,7 @@ The current private preview uses one persistent Supabase workspace without a QR 
 
 The intended reviewer is one person, but Vercel-authorized members, granted users, and holders of an automation/shareable-link bypass can use this same workspace. Keep those access grants limited. Do not distribute a bypass token in the review URL. [Vercel protection](https://vercel.com/docs/deployment-protection) is the authentication boundary; the application's environment/hostname checks supplement it.
 
-Protected preview QR links also require preview access. The separate public scanner serves the permanent origin while Studio stays protected, with no app account requirement. Before producing event materials, complete the [public launch checks](../docs/MAINTENANCE.md#public-launch-checks) and verify decoded exports use the public origin. Changing configuration cannot update an already printed QR code.
+Protected preview QR links also require preview access. For this older account-free mode, the separate public scanner serves the permanent origin while Studio stays Vercel-protected. Before producing event materials, complete the [public launch checks](../docs/MAINTENANCE.md#public-launch-checks) and verify decoded exports use the public origin. Changing configuration cannot update an already printed QR code.
 
 ## Gateway deployment
 
@@ -55,18 +86,29 @@ It bounds requests to 4 KB, validates metadata, honors archive/pause/expiry, and
 
 ### Public scan gateway
 
-`public-scan-gateway` is independent of the original private scan gateway. It reuses the scan validation/availability/recording logic, but limits code lookup to the fixed private workspace. Deploy the complete import set under `functions/public-scan-gateway/` and any referenced shared scan files. Substitute the public key’s SHA-256 verifier and the provisioned workspace ID in memory, retaining placeholders in committed source. An unconfigured scope must fail closed; do not accept a workspace ID from a request.
+`public-scan-gateway` is independent of the original private scan gateway. It reuses scan validation/availability/recording logic, but limits every lookup to an ownership scope fixed in its deployment. Deploy the complete import set under `functions/public-scan-gateway/` and referenced shared scan files. Substitute these placeholders in memory, retaining placeholders in committed source:
 
-Generate a fresh independent bearer, then configure only these database-related values in the separate `mastra-qr-scanner` Vercel project:
+| Placeholder | Value |
+| --- | --- |
+| `__PUBLIC_SCAN_GATEWAY_KEY_SHA256__` | Existing public scan bearer's SHA-256 digest; keep it unchanged during ownership transfer |
+| `__PUBLIC_SCAN_SCOPE_MODE__` | `workspace`, `transition` or `owner` |
+| `__PUBLIC_SCAN_WORKSPACE_ID__` | Exact workspace UUID for workspace/transition mode; empty string for owner mode |
+| `__PUBLIC_SCAN_OWNER_ID__` | Exact verified Auth user UUID for transition/owner mode; empty string for workspace mode |
+
+Workspace mode requires the fixed workspace and a null owner. Transition mode accepts either that exact workspace with a null owner, or that exact owner with a null workspace. Owner mode requires the fixed owner and a null workspace. Invalid or unsubstituted configuration fails closed, including a nonempty unused ID. Callers cannot supply any scope.
+
+Deploy transition mode before moving codes, then owner mode after the atomic transfer. Verify existing links at both stages. Do not leave the gateway bound only to the old workspace after the transfer.
+
+For the first installation, generate an independent bearer. Keep that bearer for scope-only updates. Configure only these database-related values in the separate `mastra-qr-scanner` Vercel project:
 
 | Variable | Purpose |
 | --- | --- |
 | `SUPABASE_URL` | Exact HTTPS Supabase project origin |
 | `QR_PUBLIC_SCAN_GATEWAY_KEY` | Server-only bearer for `public-scan-gateway` |
 
-Never install `QR_WORKSPACE_GATEWAY_KEY`, the private scan key, full-project database keys, Books secrets, or protection bypasses in the scanner. The gateway cannot list/edit codes or read reports, and the scanner does not expose gateway attribution metadata to visitors. Confirm cross-workspace lookup denial, bearer isolation, and ordinary Data API denial before releasing the public hostname. This adds no browser grants or schema changes.
+Never install `QR_WORKSPACE_GATEWAY_KEY`, the private scan key, full-project database keys, Books secrets, or protection bypasses in the scanner. The gateway cannot list/edit codes or read reports, and the scanner does not expose gateway attribution metadata to visitors. Confirm out-of-scope workspace/owner lookup denial, bearer isolation, and ordinary Data API denial before releasing the public hostname. This adds no browser grants or schema changes.
 
-The first public release forwards to existing destinations without Books attribution signing or preview-origin rewriting. Studio continues using its fixed workspace gateway for management and analytics. A later ownership transfer must also update the public gateway’s scope while preserving code IDs and slugs.
+Public scanning forwards to existing destinations without Books attribution signing or preview-origin rewriting. Google-login Studio uses its verified owner's session and RLS for management and analytics; older account-free previews used the fixed workspace gateway. Retire that old management credential after transfer.
 
 ### Books preview gateway
 
@@ -76,10 +118,8 @@ The private Books project receives only this scoped gateway credential, plus its
 
 Rotate a compromised bearer by replacing its deployed verifier and Vercel variable in the same maintenance window, then verify that gateway's flow. Keep all gateway credentials independent. `supabase/functions/**` is excluded from the Next.js TypeScript project; its Deno imports are pinned and its platform-neutral logic is tested through Node.
 
-## Local review and later login
+## Local review
 
 `QR_LOCAL_PREVIEW=1` remains a development-server + loopback-only file store and reviewer identity. It stores ignored `.data/qr-studio.json` and never activates in a production build. This is independent of the hosted private workspace and has no estimated geography.
-
-When account login is requested, configure Supabase Auth's Site URL, exact callback allowlist, and email delivery; optionally set `QR_ADMIN_EMAILS`. Verify the intended user's account, then follow [the ownership transfer](../docs/MAINTENANCE.md#adding-account-login-later). Move the workspace's codes to that owner without recreating IDs/slugs/scans, disable the private flag, and retire the workspace gateway credential. If the public scanner is active, revise its fixed ownership scope and verify the permanent links during that transition; leaving it bound to the old workspace would make transferred codes unavailable.
 
 An optional direct scan path accepts `SUPABASE_SECRET_KEY` or legacy `SUPABASE_SERVICE_ROLE_KEY`; leave these unset on Vercel when using the preferred scoped scan gateway.

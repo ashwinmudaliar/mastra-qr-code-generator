@@ -4,9 +4,9 @@ A QR code workspace for Mastra books and events. Create a code for each event or
 
 Built with Next.js, Supabase Postgres, and Vercel. The Google-login path is for one creator, `ashwin@mastra.ai`, at [mastra-qr-studio.vercel.app](https://mastra-qr-studio.vercel.app). The dashboard uses a verified Google session and owner-scoped data; there is no team or signup workflow. Public scan links stay at `https://qr.mastrabooks.dev/q/<slug>`, served by the separate `scanner/` service. Opening the bare scan domain redirects to the dashboard.
 
-This branch adds that login path and the ownership transition; it does not establish that cloud setup or deployment has completed. Follow the [Google login rollout](docs/MAINTENANCE.md#google-login-rollout) and record hosted verification before treating the standard address as ready. The [18 November release record](docs/PUBLIC-LAUNCH.md) describes the earlier protected, account-free preview and public scanner.
+Google login and the ownership transfer were verified on 19 November 2026. Use [the standard dashboard](https://mastra-qr-studio.vercel.app) and sign in with `ashwin@mastra.ai`; new-user signup and email/password authentication are disabled. The [Google login release record](docs/GOOGLE-LOGIN.md) lists deployed versions and checks. The [18 November record](docs/PUBLIC-LAUNCH.md) describes the earlier public scanner release.
 
-Older account-free previews rely on Vercel access protection and a fixed workspace. Retire their management credential after transferring the existing codes to the Google account. The transfer keeps IDs, slugs, artwork and history, so existing public printouts keep working. Exports made with an older protected preview address must still be downloaded again to use the public origin.
+The existing code retained its ID, slug, artwork and history through the ownership transfer. Older account-free previews remain Vercel-protected, but their retired management credential no longer works; use the standard dashboard. Public printouts keep their existing scan origin. Exports made with an older protected preview address must still be downloaded again to use the public origin.
 
 ## What works
 
@@ -59,6 +59,7 @@ The HTTP and browser checks create and archive their own temporary codes and rec
 - [Architecture](docs/ARCHITECTURE.md): data flow, ownership, scan semantics, and source map.
 - [Books attribution](docs/FULFILLMENT.md): integration contract, isolated preview, reporting definitions, and release boundary.
 - [Maintenance](docs/MAINTENANCE.md): development, deployment, migrations, and launch checks.
+- [Google login release](docs/GOOGLE-LOGIN.md): verified single-user setup and deployment evidence.
 - [Public scanner](scanner/README.md): the independently deployed redirect service.
 - [Agent instructions](AGENTS.md): repository rules for future coding agents.
 - [Maintenance skill](.agents/skills/maintain-qr-studio/SKILL.md): a focused workflow for agent-assisted changes.

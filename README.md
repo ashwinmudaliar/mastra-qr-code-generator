@@ -2,11 +2,11 @@
 
 A QR code workspace for Mastra books and events. Create a code for each event or placement, customize the artwork, and track visits before forwarding people to the book fulfillment site.
 
-Built with Next.js, Supabase Postgres, and Vercel. The protected Studio opens without a QR Studio account: codes, uploaded logos, and scan history persist in one Supabase workspace. Vercel access protection remains the entry gate. Public scans use the separate `scanner/` service at the selected permanent origin, `https://qr.mastrabooks.dev`. Follow the [public launch checks](docs/MAINTENANCE.md#public-launch-checks) before producing event materials; this source configuration is not proof of a completed launch.
+Built with Next.js, Supabase Postgres, and Vercel. The Google-login path is for one creator, `ashwin@mastra.ai`, at [mastra-qr-studio.vercel.app](https://mastra-qr-studio.vercel.app). The dashboard uses a verified Google session and owner-scoped data; there is no team or signup workflow. Public scan links stay at `https://qr.mastrabooks.dev/q/<slug>`, served by the separate `scanner/` service. Opening the bare scan domain redirects to the dashboard.
 
-Supabase Auth is retained for a later login rollout. No signup, email confirmation, or Auth URL setup is needed for the current private workspace. Anyone with authorized Vercel access or a protection bypass can use that workspace, so keep preview access limited to the intended reviewer.
+Google login and the ownership transfer were verified on 19 November 2026. Use [the standard dashboard](https://mastra-qr-studio.vercel.app) and sign in with `ashwin@mastra.ai`; new-user signup and email/password authentication are disabled. The [Google login release record](docs/GOOGLE-LOGIN.md) lists deployed versions and checks. The [18 November record](docs/PUBLIC-LAUNCH.md) describes the earlier public scanner release.
 
-The [current private Studio](https://mastra-qr-studio-7hcwdybe3-ashwinm546.vercel.app) exports public scan links at `qr.mastrabooks.dev`. The [18 November release record](docs/PUBLIC-LAUNCH.md) lists deployed versions, observed checks, and remaining boundaries. Existing preview exports must be downloaded again to use the public origin.
+The existing code retained its ID, slug, artwork and history through the ownership transfer. Older account-free previews remain Vercel-protected, but their retired management credential no longer works; use the standard dashboard. Public printouts keep their existing scan origin. Exports made with an older protected preview address must still be downloaded again to use the public origin.
 
 ## What works
 
@@ -33,7 +33,7 @@ npm run dev
 
 Open [the local studio](http://127.0.0.1:3147). The example enables local review mode: codes and scans live in ignored `.data/qr-studio.json`, and no Supabase account is required. It works only with the development server on loopback. A production build never enables this bypass.
 
-To exercise the retained Supabase Auth path locally, set `QR_LOCAL_PREVIEW=0`, configure the project URL and publishable key, and sign in. The hosted account-free mode is separate: `QR_PRIVATE_PREVIEW=1` works only on its protected Vercel preview address and uses a scoped workspace gateway. For setup, see [Supabase setup](supabase/SETUP.md).
+Local review remains account-free. Google login requires its fixed HTTPS dashboard origin, Supabase configuration and Google OAuth setup; it intentionally rejects the local and private-preview flags. The older `QR_PRIVATE_PREVIEW=1` mode works only on its protected Vercel preview address and uses a scoped workspace gateway. For setup, see [Supabase setup](supabase/SETUP.md).
 
 ## Check a change
 
@@ -59,6 +59,7 @@ The HTTP and browser checks create and archive their own temporary codes and rec
 - [Architecture](docs/ARCHITECTURE.md): data flow, ownership, scan semantics, and source map.
 - [Books attribution](docs/FULFILLMENT.md): integration contract, isolated preview, reporting definitions, and release boundary.
 - [Maintenance](docs/MAINTENANCE.md): development, deployment, migrations, and launch checks.
+- [Google login release](docs/GOOGLE-LOGIN.md): verified single-user setup and deployment evidence.
 - [Public scanner](scanner/README.md): the independently deployed redirect service.
 - [Agent instructions](AGENTS.md): repository rules for future coding agents.
 - [Maintenance skill](.agents/skills/maintain-qr-studio/SKILL.md): a focused workflow for agent-assisted changes.

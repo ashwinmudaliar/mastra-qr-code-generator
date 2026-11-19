@@ -1,5 +1,6 @@
 /** This bundle deliberately has no Studio, account, or Books integration imports. */
 export const SUPABASE_PROJECT_ORIGIN = "https://ltoyhqrorttppcitdwii.supabase.co";
+const STUDIO_URL = "https://mastra-qr-studio.vercel.app/";
 const GATEWAY_URL = `${SUPABASE_PROJECT_ORIGIN}/functions/v1/public-scan-gateway`;
 const SCAN_PATH = /^\/q\/([A-Za-z0-9_-]{12})$/;
 const DRAFT_SLUG = "draftpreview";
@@ -108,12 +109,16 @@ async function boundedJson(response: Response): Promise<unknown> {
 }
 
 export async function handleScan(request: Request, dependencies: ScannerDependencies = {}): Promise<Response> {
-  const match = SCAN_PATH.exec(new URL(request.url).pathname);
-  if (!match) return page(request, 404, "The link may be incomplete. Check the code or ask your event organizer.");
+  const pathname = new URL(request.url).pathname;
+  const match = SCAN_PATH.exec(pathname);
+  if (pathname !== "/" && !match) return page(request, 404, "The link may be incomplete. Check the code or ask your event organizer.");
   if (request.method !== "GET" && request.method !== "HEAD") {
     return page(request, 405, "Open this QR link in your browser.", { Allow: "GET, HEAD" });
   }
-  const slug = match[1];
+  // The scan hostname remains permanent for printed codes. Its homepage points
+  // to the separate signed-in Studio without forwarding any query parameters.
+  if (pathname === "/") return new Response(null, { status: 302, headers: { ...headers, Location: STUDIO_URL } });
+  const slug = match![1];
   if (slug === DRAFT_SLUG) return page(request, 404, "This QR code was printed from an unsaved preview. Save it in QR Studio to create its tracking link.");
 
   const env = dependencies.env ?? process.env;

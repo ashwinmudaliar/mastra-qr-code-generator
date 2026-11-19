@@ -65,7 +65,7 @@ export default function Studio() {
 
   async function refreshSession() {
     try { const data = await api<SessionInfo>("/api/session"); setSession(data); setSessionError(""); }
-    catch (e) { setSessionError(e instanceof Error ? e.message : "Could not connect to QR Studio."); }
+    catch (e) { setSession(null); setSessionError(e instanceof Error ? e.message : "Could not connect to QR Studio."); }
   }
   async function loadCodes() {
     setLoadingCodes(true);
@@ -80,6 +80,13 @@ export default function Studio() {
     void refreshSession();
   }, []);
   useEffect(() => { setHistorical([]); if (session?.user) void loadCodes(); }, [session?.user?.id]);
+  useEffect(() => {
+    if (!session?.user || session.authProvider !== "google") return;
+    const refresh = () => { if (document.visibilityState === "visible") void refreshSession(); };
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 5 * 60 * 1000);
+    return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
+  }, [session?.user?.id, session?.authProvider]);
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.action ? 8000 : 4500); return () => clearTimeout(id); }, [toast]);
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -200,7 +207,13 @@ export default function Studio() {
   async function signOut() {
     if (!canDiscard()) return;
     setBusy(true); setError("");
-    try { await api("/api/auth/logout", { method: "POST", body: "{}" }); setCodes([]); setSession(old => old ? { ...old, user: null } : old); }
+    try {
+      await api("/api/auth/logout", { method: "POST", body: "{}" });
+      const fresh = initialForm();
+      setCodes([]); setEditing(null); setForm(fresh); setSavedInput(fresh); setHistorical([]);
+      setArchiveTarget(null); setStickerTarget(null); setToast(null); setSheetOpen(false); setView("codes");
+      setSession(old => old ? { ...old, user: null } : old);
+    }
     catch (e) { setError(e instanceof Error ? e.message : "Could not sign out. Please try again."); }
     finally { setBusy(false); }
   }
@@ -439,6 +452,23 @@ function Auth({ session, onSignedIn }: { session: SessionInfo; onSignedIn: () =>
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get("auth");
+    if (!result) return;
+    if (result === "denied") setError("This Google account does not have access to QR Studio. Try your approved account.");
+    else if (result === "failed") setError("Google sign-in did not finish. Please try again.");
+    else if (result === "confirm") setError("The sign-in link could not be confirmed. Please try signing in again.");
+    url.searchParams.delete("auth");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+  async function signInWithGoogle() {
+    setBusy(true); setError("");
+    try {
+      const result = await api<{ url: string }>("/api/auth/google", { method: "POST", body: "{}" });
+      window.location.assign(result.url);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not start Google sign-in."); setBusy(false); }
+  }
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
@@ -448,6 +478,15 @@ function Auth({ session, onSignedIn }: { session: SessionInfo; onSignedIn: () =>
     } catch (e) { setError(e instanceof Error ? e.message : "Could not sign in."); }
     finally { setBusy(false); }
   }
+  if (session.authProvider === "google") return <div className="center-page">
+    <div className="auth-card">
+      <img src="/mastra-logo.svg" alt="Mastra" width="110" />
+      <h1>Sign in to QR Studio</h1>
+      {(error || session.error) && <p className="inline-alert" role="alert">{error || session.error}</p>}
+      {!session.configured && !session.error && <p className="inline-alert" role="alert">Google sign-in isn&rsquo;t connected yet.</p>}
+      <button type="button" disabled={busy || !session.configured} className="btn primary block" onClick={() => void signInWithGoogle()}>{busy ? "Opening Google…" : "Continue with Google"}</button>
+    </div>
+  </div>;
   const passwordHint = mode === "signup" ? "Use at least 12 characters." : undefined;
   return <div className="center-page">
     <form className="auth-card" onSubmit={event => void submit(event)}>

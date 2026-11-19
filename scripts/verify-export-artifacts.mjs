@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import jsQR from 'jsqr';
+import { decodeExport } from './decode-export.mjs';
 
 const usage = `Usage: node scripts/verify-export-artifacts.mjs [expected.json]
 
@@ -78,9 +78,7 @@ async function main() {
   const results = [];
   const tiles = [];
   for (const [format, file] of [['PNG', files.png], ['SVG', svgRendered], ['PDF', pdfPrefix + '.png']]) {
-    const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    const decoded = jsQR(new Uint8ClampedArray(data), info.width, info.height);
-    results.push({ format, file, width: info.width, height: info.height, url: decoded?.data ?? null, matches: decoded?.data === expected.trackingLink });
+    results.push({ format, file, ...await decodeExport(file, expected.trackingLink) });
     const tile = await sharp(file).resize({ width: 580, height: 680, fit: 'contain', background: '#e5e7eb' }).png().toBuffer();
     tiles.push({ input: tile, left: tiles.length * 600 + 10, top: 50 });
   }
@@ -95,8 +93,8 @@ async function main() {
     visualReviewArtifact: comparison,
   };
   await fs.writeFile(path.join(folder, 'verification-report.json'), JSON.stringify(report, null, 2) + '\n');
-  for (const result of results) assert.equal(result.url, expected.trackingLink, `${result.format} artwork did not decode to the saved tracking link`);
-  console.log('PASS: PNG, rendered SVG, and rendered one-page PDF decode to the saved tracking link.');
+  for (const result of results) assert.equal(result.matches, true, `${result.format} artwork did not decode to the saved tracking link at every verification size`);
+  console.log('PASS: PNG, rendered SVG, and rendered one-page PDF decode to the saved tracking link at 800, 1200, and 1600px. Native-size readings are retained in the report.');
   console.log(expected.logoSha256 !== undefined
     ? 'PASS: embedded PNG logo matches the saved normalized upload byte for byte.'
     : 'Logo embedded; manifest has no logoSha256, so saved-upload identity was not checked.');

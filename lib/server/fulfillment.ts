@@ -3,6 +3,7 @@ import type { FulfillmentMetrics, FulfillmentReport, FulfillmentResponse, QRCode
 import type { RequestContext } from "./context";
 import { booksPreviewOrigin } from "./attribution";
 import { ApiError } from "./validation";
+import { publicScanOrigin } from "./public-scanning";
 
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const metricsShape = { requests: count, booksRequested: count, booksShipped: count, deliveredOrders: count, needsAttention: count };
@@ -101,6 +102,7 @@ export async function fetchFulfillment(
   mode: RequestContext["mode"], filters: ReturnType<typeof fulfillmentFilters>,
   env: Environment = process.env, fetcher: Fetcher = fetch,
 ): Promise<FulfillmentResponse> {
+  if (publicScanOrigin(env)) return { status: "not_configured", report: null, message: "Live fulfillment reporting is not connected yet." };
   const previewOrigin = booksPreviewOrigin(mode, env);
   if (mode === "supabase" || !previewOrigin || !env.QR_BOOKS_REPORT_URL || !env.QR_BOOKS_REPORT_KEY || env.QR_BOOKS_REPORT_KEY.length < 32) {
     return { status: "not_configured", report: null, previewOrigin, message: "Books fulfillment is not connected in this preview." };

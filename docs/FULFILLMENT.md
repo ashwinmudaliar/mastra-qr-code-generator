@@ -1,6 +1,8 @@
 # Books attribution contract
 
-This integration is approved for private preview only. Books production code, data, credentials, and deployment remain untouched. QR Studio account setup remains deferred.
+This fulfillment integration remains private-preview-only. The separate public QR scanner sends visitors to the saved Books destination without signing attribution or rewriting it to a test portal. Books production code, data, credentials, and deployment remain untouched. QR Studio account setup remains deferred.
+
+Public-link mode disables Books preview rewriting and reporting in that Studio deployment, regardless of retained preview environment variables. Results reports live fulfillment as not connected. Older protected previews can still exercise isolated simulation; never present those results as a live conversion funnel. Real reporting requires a production adapter over authoritative requests/shipment evidence, durable submission replay handling, and a separately reviewed Books release. Orders placed before capture is enabled do not gain attribution retroactively.
 
 ## Wire contract v1
 

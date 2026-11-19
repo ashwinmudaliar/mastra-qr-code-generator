@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { isGoogleLogin } from "../server/google-auth";
 
 export function isSupabaseConfigured() {
   return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
@@ -12,7 +13,9 @@ export async function createSupabaseServerClient() {
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     { cookies: {
       getAll: () => cookieStore.getAll(),
-      setAll: values => { for (const {name,value,options} of values) cookieStore.set(name,value,options); },
+      // Auth runs entirely in Route Handlers, which also persist refreshed cookies.
+      // Google mode has no browser Supabase client and can keep tokens HTTP-only.
+      setAll: values => { for (const {name,value,options} of values) cookieStore.set(name,value,isGoogleLogin()?{...options,httpOnly:true,secure:true,sameSite:"lax"}:options); },
     } },
   );
 }

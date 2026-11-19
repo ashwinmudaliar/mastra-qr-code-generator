@@ -65,7 +65,7 @@ export default function Studio() {
 
   async function refreshSession() {
     try { const data = await api<SessionInfo>("/api/session"); setSession(data); setSessionError(""); }
-    catch (e) { setSessionError(e instanceof Error ? e.message : "Could not connect to QR Studio."); }
+    catch (e) { setSession(null); setSessionError(e instanceof Error ? e.message : "Could not connect to QR Studio."); }
   }
   async function loadCodes() {
     setLoadingCodes(true);
@@ -80,6 +80,13 @@ export default function Studio() {
     void refreshSession();
   }, []);
   useEffect(() => { setHistorical([]); if (session?.user) void loadCodes(); }, [session?.user?.id]);
+  useEffect(() => {
+    if (!session?.user || session.authProvider !== "google") return;
+    const refresh = () => { if (document.visibilityState === "visible") void refreshSession(); };
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 5 * 60 * 1000);
+    return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
+  }, [session?.user?.id, session?.authProvider]);
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.action ? 8000 : 4500); return () => clearTimeout(id); }, [toast]);
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -200,7 +207,13 @@ export default function Studio() {
   async function signOut() {
     if (!canDiscard()) return;
     setBusy(true); setError("");
-    try { await api("/api/auth/logout", { method: "POST", body: "{}" }); setCodes([]); setSession(old => old ? { ...old, user: null } : old); }
+    try {
+      await api("/api/auth/logout", { method: "POST", body: "{}" });
+      const fresh = initialForm();
+      setCodes([]); setEditing(null); setForm(fresh); setSavedInput(fresh); setHistorical([]);
+      setArchiveTarget(null); setStickerTarget(null); setToast(null); setSheetOpen(false); setView("codes");
+      setSession(old => old ? { ...old, user: null } : old);
+    }
     catch (e) { setError(e instanceof Error ? e.message : "Could not sign out. Please try again."); }
     finally { setBusy(false); }
   }
@@ -220,10 +233,11 @@ export default function Studio() {
   if (!session) return <div className="center-page"><img src="/mastra-logo.svg" alt="Mastra" width="120" /><p role="status">{sessionError || "Loading QR Studio…"}</p>{sessionError && <button type="button" className="btn primary" onClick={() => void refreshSession()}>Try again</button>}</div>;
   if (!session.user) return <Auth session={session} onSignedIn={refreshSession} />;
 
-  const previewValue = editing ? trackingLink(origin, editing.slug) : draftLink(origin || "https://qr.mastra.ai");
-  const previewNote = session.mode === "private" ? `Private preview: scanners need preview access${session.booksPreviewOrigin && isBooksHome(form.destination) ? ", and Books links open the test form" : ""}. Don’t print for events yet.`
+  const publicLinks = Boolean(session.publicScanOrigin && session.publicScanOrigin === origin);
+  const previewValue = editing ? trackingLink(origin, editing.slug) : draftLink(origin || "https://qr.mastrabooks.dev");
+  const previewNote = publicLinks ? "Anyone can scan saved codes. Editing and Results stay private." : session.mode === "private" ? `Private preview: scanners need preview access${session.booksPreviewOrigin && isBooksHome(form.destination) ? ", and Books links open the test form" : ""}. Don’t print for events yet.`
     : session.mode === "local" ? "Local preview: these links only open on this computer." : undefined;
-  const stickerNote = session.mode === "private" ? "Private preview: test prints only. Attendees can’t open these links until there’s a public scan domain."
+  const stickerNote = publicLinks ? "Scan a test print before printing the full batch." : session.mode === "private" ? "Private preview: test prints only. Attendees can’t open these links until there’s a public scan domain."
     : session.mode === "local" ? "Local preview: test prints only. These links only open on this computer." : undefined;
   const stateText = readyToDownload ? (form.status === "paused" ? "Saved · paused" : "Saved") : editing ? "Unsaved changes" : "Not saved";
   const primaryLabel = busy ? processingLogo ? "Adding logo…" : readyToDownload ? "Downloading…" : "Saving…" : readyToDownload ? "Download PNG" : editing ? "Save changes" : "Save code";
@@ -241,7 +255,7 @@ export default function Studio() {
         </nav>
         <div className="topbar-end">
           {session.mode === "supabase" ? <><span className="account">{session.user.email}</span><button type="button" className="btn ghost small" disabled={busy} onClick={() => void signOut()}>Sign out</button></>
-            : <span className="mode-chip"><span className="dot" aria-hidden="true" /><span className="mode-long">{session.mode === "local" ? "Local preview" : "Private preview"}</span><span className="mode-short">Preview</span></span>}
+            : <span className="mode-chip"><span className="dot" aria-hidden="true" /><span className="mode-long">{session.mode === "local" ? "Local preview" : publicLinks ? "Private workspace" : "Private preview"}</span><span className="mode-short">{publicLinks ? "Private" : "Preview"}</span></span>}
         </div>
       </div>
     </header>
@@ -438,6 +452,23 @@ function Auth({ session, onSignedIn }: { session: SessionInfo; onSignedIn: () =>
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get("auth");
+    if (!result) return;
+    if (result === "denied") setError("This Google account does not have access to QR Studio. Try your approved account.");
+    else if (result === "failed") setError("Google sign-in did not finish. Please try again.");
+    else if (result === "confirm") setError("The sign-in link could not be confirmed. Please try signing in again.");
+    url.searchParams.delete("auth");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+  async function signInWithGoogle() {
+    setBusy(true); setError("");
+    try {
+      const result = await api<{ url: string }>("/api/auth/google", { method: "POST", body: "{}" });
+      window.location.assign(result.url);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not start Google sign-in."); setBusy(false); }
+  }
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
@@ -447,6 +478,15 @@ function Auth({ session, onSignedIn }: { session: SessionInfo; onSignedIn: () =>
     } catch (e) { setError(e instanceof Error ? e.message : "Could not sign in."); }
     finally { setBusy(false); }
   }
+  if (session.authProvider === "google") return <div className="center-page">
+    <div className="auth-card">
+      <img src="/mastra-logo.svg" alt="Mastra" width="110" />
+      <h1>Sign in to QR Studio</h1>
+      {(error || session.error) && <p className="inline-alert" role="alert">{error || session.error}</p>}
+      {!session.configured && !session.error && <p className="inline-alert" role="alert">Google sign-in isn&rsquo;t connected yet.</p>}
+      <button type="button" disabled={busy || !session.configured} className="btn primary block" onClick={() => void signInWithGoogle()}>{busy ? "Opening Google…" : "Continue with Google"}</button>
+    </div>
+  </div>;
   const passwordHint = mode === "signup" ? "Use at least 12 characters." : undefined;
   return <div className="center-page">
     <form className="auth-card" onSubmit={event => void submit(event)}>

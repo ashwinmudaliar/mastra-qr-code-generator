@@ -1,6 +1,6 @@
 # Mastra QR Studio: agent instructions
 
-This repository contains a Next.js QR editor on Vercel with Supabase Postgres. Its current private mode uses one durable workspace without an app account; Supabase Auth remains available for later. Start with [README.md](README.md); read [docs/DESIGN.md](docs/DESIGN.md) for UI work and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) plus [docs/MAINTENANCE.md](docs/MAINTENANCE.md) for behavior or deployment changes.
+This repository contains a Next.js QR editor on Vercel with Supabase Postgres. Google login is a single-user path for `ashwin@mastra.ai`; older protected previews use a fixed workspace without an app account. Start with [README.md](README.md); read [docs/DESIGN.md](docs/DESIGN.md) for UI work and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) plus [docs/MAINTENANCE.md](docs/MAINTENANCE.md) for behavior or deployment changes.
 
 ## Working boundaries
 
@@ -11,7 +11,9 @@ This repository contains a Next.js QR editor on Vercel with Supabase Postgres. I
 - Preserve saved QR slugs and printed-link behavior. Destination edits must not create a new slug; changing the hosting origin cannot update printed codes.
 - Archive codes instead of permanently deleting them. Preserve code IDs, scans, and fulfillment report scope; restore to paused. Keep permanent fixture cleanup outside application/gateway endpoints and target only exact operator-created records.
 - Keep local preview bypass restricted to development + explicit flag + loopback. It must never work in production.
-- Hosted account-free mode is separate: require its explicit private flag, Vercel preview environment, and generated deployment hostname. Vercel Deployment Protection is its authentication boundary; keep all deployments protected and verify unauthenticated API requests are blocked. Do not add signup or email setup as a prerequisite to this mode.
+- Google mode requires `QR_GOOGLE_LOGIN=1`, an exact `QR_ADMIN_EMAILS` allowlist and fixed `QR_STUDIO_ORIGIN`. Verify the Supabase user and Google identity on every management request; never trust user-editable metadata. Keep signup/password endpoints disabled in this mode. Do not add team roles or broaden access beyond the requested creator.
+- Hosted account-free Studio requires its explicit private flag, Vercel preview environment, generated hostname and Vercel Deployment Protection. Google mode rejects private/local bypass flags. Only the verified Google-login production alias may use app authentication instead of Vercel authentication; generated URLs and previews stay protected.
+- Public scanning is a separate `scanner/` Vercel project at `qr.mastrabooks.dev`, with GET/HEAD tracking routes and a fixed-scope public scan credential. Its root redirects to `https://mastra-qr-studio.vercel.app/`; management routes remain absent. Never copy management, service-role, Books preview, or bypass credentials into it. Public scanning or Studio login does not authorize a Books production release.
 
 ## Product and design
 
@@ -25,7 +27,7 @@ All QR customization must be represented in real downloads. Keep high error corr
 
 Use `npm run typecheck`, `npm test`, and `npm run build` as appropriate. Use the local HTTP verifier after route changes, RLS checks after schema changes, and desktop/mobile screen review after UI changes. Avoid rerunning unrelated checks after unchanged successful results.
 
-Keep applied migrations immutable. See [supabase/SETUP.md](supabase/SETUP.md) for gateway deployment and the later Auth path. Preserve deployment privacy unless the user requests a public launch. When adding login later, transfer workspace ownership without changing IDs/slugs/history and retire the workspace gateway credential; removing an environment variable alone does not revoke old deployments. Report observed verification without claiming untested integrations.
+Keep applied migrations immutable. See [supabase/SETUP.md](supabase/SETUP.md) for Google Auth and gateway configuration. Follow the ownership rollout in Maintenance: deploy the exact workspace/owner transition scope, transfer codes atomically, then restrict public scanning to that owner and revoke the old workspace gateway verifier. Removing an environment variable alone does not revoke old deployments. Preserve IDs/slugs/history and report observed verification without claiming untested integrations.
 
 The repository-scoped [maintenance skill](.agents/skills/maintain-qr-studio/SKILL.md) provides a focused workflow for recurring changes.
 

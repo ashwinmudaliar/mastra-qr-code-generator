@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { createSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import { ApiError, apiError, assertSameOrigin, json, parseInput, readJson } from "@/lib/server/validation";
+import { isGoogleLogin } from "@/lib/server/google-auth";
 const inputSchema=z.object({email:z.string().email().max(254),password:z.string().min(12,"Use a password with at least 12 characters.").max(256)});
 export async function POST(request:Request) { try {
+  if(isGoogleLogin())throw new ApiError(403,"Use Google to sign in to QR Studio.");
   assertSameOrigin(request);if(!isSupabaseConfigured())throw new ApiError(503,"Connect Supabase to create your account.");
   const input=parseInput(inputSchema,await readJson(request));
   const allowlist=(process.env.QR_ADMIN_EMAILS??"").split(",").map(v=>v.trim().toLowerCase()).filter(Boolean);

@@ -54,8 +54,11 @@ export type Analytics = {
 export type SessionInfo = {
   configured: boolean;
   mode: "local" | "supabase" | "private";
+  authProvider?: "google";
+  error?: string;
   user: { id: string; email: string } | null;
   booksPreviewOrigin?: string;
+  publicScanOrigin?: string;
 };
 
 export type FulfillmentMetrics = {

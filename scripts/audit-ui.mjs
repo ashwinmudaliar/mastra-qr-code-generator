@@ -1,0 +1,183 @@
+import { chromium } from '@playwright/test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs/promises';
+import sharp from 'sharp';
+import jsQR from 'jsqr';
+import { archiveVerificationCode } from './archive-verification-code.mjs';
+const base='http://127.0.0.1:3147';
+const out=new URL('../outputs/design-audit/',import.meta.url).pathname;
+await fs.mkdir(out,{recursive:true});
+// QR_BROWSER_PATH optionally points at a preinstalled Chromium when the pinned Playwright build is absent.
+const browser=await chromium.launch({headless:true,...(process.env.QR_BROWSER_PATH?{executablePath:process.env.QR_BROWSER_PATH}:{})});
+const page=await browser.newPage({viewport:{width:1440,height:1050},reducedMotion:'reduce'});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const writes=[];page.on('request',r=>{if(r.url().includes('/api/codes')&&['POST','PATCH'].includes(r.method()))writes.push(r.url());});
+page.on('dialog',dialog=>dialog.accept());
+let code;
+const nav=name=>page.getByRole('navigation',{name:'Main'}).getByRole('button',{name,exact:true});
+const primary=()=>page.locator('#artwork-panel button.btn.primary');
+const bar=name=>page.locator('.mobile-bar').getByRole('button',{name,exact:true});
+const scanPlaces=page.locator('section').filter({has:page.getByRole('heading',{name:'Where scans came from',exact:true})});
+const shot=async(name)=>{
+ const dismiss=page.getByRole('button',{name:'Dismiss notification',exact:true});
+ if(await dismiss.isVisible())await dismiss.click();
+ await page.evaluate(()=>document.fonts.ready);
+ await page.waitForFunction(()=>[...document.querySelectorAll('.qr-preview')].filter(el=>el.getClientRects().length>0&&getComputedStyle(el).visibility!=='hidden').every(el=>{const image=el.querySelector('img');return image?.complete&&image.naturalWidth>0;}));
+ await page.screenshot({path:out+name+'.png',fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Page must fit viewport: '+name);
+};
+const pdfPageSize=path=>execFileSync('pdfinfo',[path],{encoding:'utf8'}).match(/Page size:\s+([\d.]+) x ([\d.]+) pts/)?.slice(1).map(Number);
+try{
+ await page.goto(base,{waitUntil:'networkidle'});
+ await page.getByRole('heading',{name:/^Codes/}).waitFor();
+ // Two destinations: Codes (home, with the editor) and Results. The guide page was removed.
+ assert.deepEqual(await page.getByRole('navigation',{name:'Main'}).getByRole('button').allTextContents(),['Codes','Results'],'Two primary navigation destinations');
+ assert.equal(await page.getByRole('button',{name:/How it works|Style presets/}).count(),0,'No guide or preset destinations');
+ await page.getByRole('button',{name:'New code',exact:true}).first().click();
+ await page.getByLabel('Name',{exact:true}).fill('UI audit — temporary');
+ await page.getByLabel('Event',{exact:true}).fill('Audit 2027');
+ await page.getByLabel('Placement',{exact:true}).fill('Book table');
+ await page.locator('.art-stage img').waitFor();
+ await shot('create-desktop');
+ const moreStyling=page.locator('summary',{hasText:'More styling'});
+ assert.equal(await page.getByLabel('Corner frame').isVisible(),false,'Advanced styling starts collapsed');
+ assert.equal(await page.getByRole('group',{name:'Presets'}).count(),1,'Presets live inside Look');
+ const previousPreview=await page.locator('.art-stage img').getAttribute('src');
+ await page.getByRole('group',{name:'Presets'}).getByRole('button',{name:/After hours$/}).click();
+ await page.waitForFunction(previous=>document.querySelector('.art-stage img')?.getAttribute('src')!==previous,previousPreview);
+ await moreStyling.focus();await moreStyling.press('Enter');
+ assert.equal(await page.getByLabel('Color style').inputValue(),'linear','Preset applies its actual design');
+ assert.equal(await page.getByLabel('Print frame').inputValue(),'bottom');
+ await page.getByLabel('Frame caption',{exact:true}).fill('Audit book pickup');
+ await moreStyling.click();await moreStyling.click();
+ assert.equal(await page.getByLabel('Frame caption',{exact:true}).inputValue(),'Audit book pickup','Collapsing advanced controls preserves edits');
+ await shot('design-advanced-desktop');
+ await moreStyling.click();
+ await shot('design-desktop');
+ const tracking=page.locator('summary',{hasText:'Tracking options'});
+ assert.equal(await page.getByLabel('Source',{exact:true}).isVisible(),false,'Campaign fields start collapsed');
+ await tracking.focus();await tracking.press('Space');
+ await page.getByLabel('Campaign',{exact:true}).fill('audit-tags');
+ await tracking.click();await tracking.click();
+ assert.equal(await page.getByLabel('Campaign',{exact:true}).inputValue(),'audit-tags','Collapsing tracking options preserves edits');
+ await tracking.click();
+ await shot('tracking-desktop');
+ const saved=page.waitForResponse(r=>r.url().endsWith('/api/codes')&&r.request().method()==='POST');
+ await page.getByRole('button',{name:'Save code',exact:true}).click();
+ const response=await saved;assert.equal(response.status(),201,await response.text());code=(await response.json()).code;
+ await page.getByLabel('Tracking link',{exact:true}).waitFor();
+ assert.equal(code.design.caption,'Audit book pickup');assert.equal(code.utm.campaign,'audit-tags');
+ assert.equal(await primary().innerText(),'Download PNG','Saving promotes Download');
+ await shot('saved-desktop');
+ const writesBeforeExport=writes.length;
+ for(const format of ['PNG','SVG','PDF']){
+  const promise=page.waitForEvent('download');await page.getByRole('button',{name:'Download '+format,exact:true}).click();
+  const file=await promise;const path=out+'export.'+format.toLowerCase();await file.saveAs(path);const bytes=await fs.readFile(path);
+  if(format==='PNG'){const {data,info}=await sharp(bytes).ensureAlpha().raw().toBuffer({resolveWithObject:true});const decoded=jsQR(new Uint8ClampedArray(data),info.width,info.height);assert.equal(decoded?.data,base+'/q/'+code.slug);}
+  if(format==='SVG')assert.ok(bytes.toString().includes('<svg'));
+  if(format==='PDF')assert.equal(bytes.toString().slice(0,4),'%PDF');
+ }
+ await page.getByRole('button',{name:'Sticker sheet…',exact:true}).click();
+ const sticker=page.getByRole('dialog',{name:'Print on a sticker sheet'});
+ await sticker.getByRole('button',{name:'Label 1: print',exact:true}).click();
+ await sticker.getByRole('button',{name:'Label 1: skip',exact:true}).waitFor();
+ await shot('sticker-sheet-desktop');
+ for(const [button,file] of [['Download sheet PDF','sticker-sheet.pdf'],['Alignment test','sticker-alignment-test.pdf']]){
+  const promise=page.waitForEvent('download');await sticker.getByRole('button',{name:button,exact:true}).click();
+  const download=await promise;await download.saveAs(out+file);
+  assert.equal((await fs.readFile(out+file)).toString().slice(0,4),'%PDF');
+  assert.deepEqual(pdfPageSize(out+file),[612,792],'Sticker PDFs are US Letter at physical size');
+ }
+ await page.waitForFunction(()=>!document.querySelector('.sticker-dialog button:disabled'));
+ await sticker.getByRole('button',{name:'Close',exact:true}).click();
+ await sticker.waitFor({state:'detached'});
+ assert.equal(writes.length,writesBeforeExport,'Downloads must not write saved data');
+ await page.getByLabel('Destination URL').fill('https://www.mastrabooks.dev/?draft=1');
+ assert.equal(await primary().innerText(),'Save changes','Edits restore Save as primary');
+ assert.equal(await page.getByRole('button',{name:'Download PNG',exact:true}).count(),0);
+ for(const name of ['Download SVG','Download PDF','Sticker sheet…'])assert.equal(await page.getByRole('button',{name,exact:true}).isDisabled(),true,'Unsaved edits must block export');
+ await page.getByLabel('Destination URL').fill(code.destination);
+ assert.equal(await primary().innerText(),'Download PNG','Reverting to saved input restores Download');
+ await page.setViewportSize({width:1024,height:900});await shot('saved-laptop');
+ await page.setViewportSize({width:1440,height:1050});
+ await nav('Codes').click();
+ await page.locator('.codes-table').getByText('UI audit — temporary',{exact:true}).first().waitFor();
+ await shot('library-desktop');
+ const scan=await fetch(base+'/q/'+code.slug,{redirect:'manual',headers:{'user-agent':'Mozilla/5.0 (iPhone) Mobile'}});assert.equal(scan.status,302);
+ await nav('Results').click();
+ await page.locator('.kpis').waitFor();
+ await page.getByLabel('Filter analytics by event',{exact:true}).selectOption('Audit 2027');
+ const library=await (await fetch(base+'/api/codes')).json();
+ const expectedOptions=library.codes.filter(c=>c.event==='Audit 2027').map(c=>c.id).sort();
+ const codeChoices=page.getByLabel('Filter analytics by QR code',{exact:true});
+ assert.deepEqual((await codeChoices.locator('option').evaluateAll(options=>options.map(o=>o.value).filter(Boolean))).sort(),expectedOptions,'Event filter must narrow the code choices');
+ await codeChoices.selectOption(code.id);
+ await page.getByLabel('Filter analytics by event',{exact:true}).selectOption('');
+ assert.equal(await codeChoices.inputValue(),'','Changing event must reset code selection');
+ // Scan geography now uses one Country / City / Device selector at every width.
+ const breakdown=page.getByRole('group',{name:'Break down scans by',exact:true});
+ assert.equal(await breakdown.isVisible(),true);
+ assert.equal(await breakdown.getByRole('button',{name:'Country',exact:true}).getAttribute('aria-pressed'),'true');
+ await shot('analytics-desktop');
+ await page.setViewportSize({width:390,height:844});
+ await page.getByLabel('Filter analytics by event',{exact:true}).selectOption('Audit 2027');
+ await codeChoices.selectOption(code.id);
+ const filteredReport=page.waitForResponse(r=>r.url().includes('/api/analytics?days=7')&&r.url().includes('codeId='+code.id));
+ await page.getByLabel('Analytics period',{exact:true}).selectOption('7');
+ const report=await (await filteredReport).json();
+ await page.locator('.kpis [data-metric=scans] dd').filter({hasText:String(report.totalScans)}).waitFor();
+ for(const [label,key] of [['Country','byCountry'],['City','byCity'],['Device','byDevice']]){
+  await breakdown.getByRole('button',{name:label,exact:true}).click();
+  for(const primaryHeading of ['Scans per day','By event'])assert.equal(await page.getByRole('heading',{name:primaryHeading,exact:true}).isVisible(),true,'Primary comparisons stay visible');
+  assert.deepEqual(await scanPlaces.locator('.bar-value').allTextContents(),report[key].slice(0,6).map(row=>row.scans.toLocaleString()),'Selected breakdown shows its real counts');
+  assert.equal(await page.getByLabel('Analytics period',{exact:true}).inputValue(),'7');
+  assert.equal(await page.getByLabel('Filter analytics by event',{exact:true}).inputValue(),'Audit 2027');
+  assert.equal(await codeChoices.inputValue(),code.id,'Breakdown switching preserves report filters');
+ }
+ await shot('analytics-mobile-device');
+ await page.setViewportSize({width:1024,height:900});
+ assert.equal(await breakdown.getByRole('button',{name:'Device',exact:true}).getAttribute('aria-pressed'),'true','Resizing preserves the selected breakdown');
+ await shot('analytics-laptop');
+ await page.setViewportSize({width:390,height:844});
+ await breakdown.getByRole('button',{name:'Country',exact:true}).click();
+ await shot('analytics-mobile');
+ await nav('Codes').click();
+ await page.locator('.codes-table').getByRole('button',{name:'UI audit — temporary',exact:true}).first().waitFor();
+ // Archived copies from earlier runs are hidden in Current codes; the newest code is listed first.
+ await page.locator('.codes-table').getByRole('button',{name:'UI audit — temporary',exact:true}).first().click();
+ await page.getByLabel('Name',{exact:true}).waitFor();
+ await shot('create-mobile');
+ await page.locator('summary',{hasText:'More styling'}).click();
+ await shot('design-mobile');
+ // Phones show the form with a fixed action bar; the artwork opens as a sheet over it.
+ assert.equal(await page.locator('#artwork-panel').isVisible(),false,'Artwork sheet starts closed on phones');
+ await page.getByRole('button',{name:'Show artwork and downloads',exact:true}).click();
+ assert.equal(await page.locator('#artwork-panel').isVisible(),true,'Mobile artwork sheet must open');
+ await page.getByRole('button',{name:'Close preview',exact:true}).click();
+ await page.getByLabel('Name',{exact:true}).fill('UI audit — mobile saved');
+ await page.getByRole('button',{name:'Show artwork and downloads',exact:true}).click();
+ await page.locator('#artwork-panel .sheet-head').getByText('UI audit — mobile saved',{exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Download SVG',exact:true}).isDisabled(),true,'Opening the sheet must preserve unsaved changes');
+ // The open sheet covers the action bar and carries the same primary action.
+ const mobileSave=primary();
+ assert.equal(await mobileSave.innerText(),'Save changes');
+ assert.equal(await mobileSave.isEnabled(),true,'Save must be available in the mobile artwork sheet');
+ await mobileSave.scrollIntoViewIfNeeded();
+ const saveBox=await mobileSave.boundingBox();
+ assert.ok(saveBox&&saveBox.y>=0&&saveBox.y+saveBox.height<=844,'Mobile save must be reachable within the viewport');
+ const [updated]=await Promise.all([page.waitForResponse(r=>r.url().endsWith('/api/codes/'+code.id)&&r.request().method()==='PATCH'),mobileSave.click()]);
+ assert.equal(updated.status(),200,'Mobile Save changes must persist the draft');
+ await bar('Download').waitFor({state:'attached'});
+ assert.equal(await primary().innerText(),'Download PNG','Mobile Save promotes Download');
+ await shot('preview-save-mobile');
+ await page.getByRole('button',{name:'Close preview',exact:true}).click();
+ assert.equal(await page.getByLabel('Name',{exact:true}).inputValue(),'UI audit — mobile saved','Closing the sheet must retain the saved inputs');
+ await page.getByRole('button',{name:'Codes',exact:true}).first().click();
+ await page.getByRole('button',{name:'New code',exact:true}).first().click();
+ assert.equal(await page.getByLabel('Name',{exact:true}).inputValue(),'','New code starts empty');
+ assert.equal(await page.locator('#artwork-panel').isVisible(),false,'New code keeps the artwork sheet closed until opened');
+ assert.deepEqual(errors,[],'No browser runtime errors');
+ console.log('Browser checks passed: two destinations, presets inside Look, collapsed controls with keyboard/value retention, Save/Download transitions, read-only PNG/SVG/PDF and Letter sticker/alignment PDFs (PNG decoded), dirty export prevention, library, filters, breakdown selector with actual counts, scan report, mobile action bar and artwork sheet, desktop/laptop/mobile overflow.');
+}catch(e){await page.screenshot({path:out+'failure.png',fullPage:true});throw e;}
+finally{try{if(code)await archiveVerificationCode({base,code,request:(path,options)=>fetch(base+path,options),output:out});}finally{await browser.close();}}

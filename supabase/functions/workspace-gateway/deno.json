@@ -1,0 +1,9 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.119.0",
+    "zod": "npm:zod@3.25.76",
+    "./store": "./store.ts",
+    "../../../lib/server/validation": "../../../lib/server/validation.ts",
+    "../../../lib/qr-design": "../../../lib/qr-design.ts"
+  }
+}

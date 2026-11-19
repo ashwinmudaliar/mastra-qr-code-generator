@@ -1,0 +1,27 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "npm run build",
+  "installCommand": "npm ci --ignore-scripts",
+  "outputDirectory": "public",
+  "functions": {
+    "api/index.ts": { "maxDuration": 15 }
+  },
+  "routes": [
+    { "src": "^/$", "dest": "/api/index" },
+    { "src": "^/q/[A-Za-z0-9_-]{12}$", "dest": "/api/index" },
+    {
+      "src": "/.*",
+      "dest": "/404.html",
+      "status": 404,
+      "headers": {
+        "Cache-Control": "private, no-store, max-age=0",
+        "CDN-Cache-Control": "no-store",
+        "X-Robots-Tag": "noindex, nofollow",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+      }
+    }
+  ]
+}
